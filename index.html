@@ -142,9 +142,16 @@ const labelG = g.append("g");
 
 // Bezier curves instead of lines
 const linkEls = linkG.selectAll("path").data(links).join("path")
-  .attr("stroke", "#333").attr("stroke-opacity", 0.35)
+  .attr("stroke", d => {
+    const w = d.weight || 1;
+    if (w >= 8) return getColor(d.source.id || d.source);
+    if (w >= 5) return "#555";
+    return "#2a2a2a";
+  })
+  .attr("stroke-opacity", d => 0.15 + Math.min((d.weight||1) / 10, 1) * 0.55)
   .attr("stroke-width", d => wScale(d.weight))
-  .attr("fill", "none");
+  .attr("fill", "none")
+  .style("filter", d => (d.weight || 1) >= 7 ? "url(#glow2)" : "none");
 
 // Pulse dots on strong edges (weight >= 5)
 const strongLinks = links.filter(l => l.weight >= 5);
@@ -245,11 +252,24 @@ const pulseProgress = {};
 strongLinks.forEach((l, i) => pulseProgress[i] = Math.random());
 
 const sim = d3.forceSimulation(nodes)
-  .force("link", d3.forceLink(links).id(d => d.id).distance(d => 50 / Math.sqrt(d.weight || 1)).strength(d => 0.4 * Math.sqrt(d.weight || 1)))
-  .force("charge", d3.forceManyBody().strength(d => -40 - degree[d.id] * 4).distanceMax(300))
-  .force("center", d3.forceCenter(W / 2, H / 2).strength(0.05))
-  .force("collision", d3.forceCollide().radius(d => rScale(degree[d.id]||1) + 4))
-  .force("gravity", d3.forceRadial(0, W/2, H/2).strength(d => degree[d.id] <= 2 ? 0.08 : 0.01))
+  .force("link", d3.forceLink(links).id(d => d.id).distance(d => 60 / Math.sqrt(d.weight || 1)).strength(d => 0.4 * Math.sqrt(d.weight || 1)))
+  .force("charge", d3.forceManyBody().strength(d => -60 - degree[d.id] * 5).distanceMax(400))
+  .force("center", d3.forceCenter(W / 2, H / 2).strength(0.03))
+  .force("collision", d3.forceCollide().radius(d => rScale(degree[d.id]||1) + 6))
+  .force("gravity", d3.forceRadial(0, W/2, H/2).strength(d => degree[d.id] <= 1 ? 0.05 : 0))
+  // cluster attraction: same-cluster nodes pull together
+  .force("cluster", d3.forceX().x(d => {
+    const cid = nodeCluster[d.id];
+    if (!cid) return W/2;
+    const siblings = (clusterNodeMap[cid]||[]).map(nid => nodes.find(n => n.id === nid)).filter(Boolean);
+    return siblings.length ? d3.mean(siblings, s => s.x || W/2) : W/2;
+  }).strength(0.04))
+  .force("clusterY", d3.forceY().y(d => {
+    const cid = nodeCluster[d.id];
+    if (!cid) return H/2;
+    const siblings = (clusterNodeMap[cid]||[]).map(nid => nodes.find(n => n.id === nid)).filter(Boolean);
+    return siblings.length ? d3.mean(siblings, s => s.y || H/2) : H/2;
+  }).strength(0.04))
   .force("collision", d3.forceCollide().radius(d => rScale(degree[d.id]||1) + 6))
   .alphaDecay(0.02)
   .on("tick", () => {
