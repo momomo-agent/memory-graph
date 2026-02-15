@@ -15,7 +15,7 @@ svg { display: block; }
   border-radius: 8px; padding: 8px 14px; color: #ccc; font-size: 13px;
   width: 220px; outline: none; backdrop-filter: blur(8px);
 }
-#search::placeholder { color: #555; }
+#search::placeholder { color: #888; }
 #search:focus { border-color: rgba(255,255,255,0.3); }
 #tooltip {
   position: fixed; pointer-events: none; z-index: 20;
@@ -36,11 +36,11 @@ svg { display: block; }
 #legend .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 #stats {
   position: fixed; top: 16px; right: 16px; z-index: 10;
-  color: #444; font-size: 11px; text-align: right;
+  color: #999; font-size: 11px; text-align: right;
 }
 #controls {
   position: fixed; bottom: 16px; right: 16px; z-index: 10;
-  color: #444; font-size: 11px; text-align: right; line-height: 1.8;
+  color: #999; font-size: 11px; text-align: right; line-height: 1.8;
 }
 #controls kbd {
   background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
@@ -175,7 +175,7 @@ const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
 const labelEls = labelG.selectAll("text").data(nodes, d => d.id).join("text")
   .text(d => d.id)
   .attr("font-size", d => Math.max(8, Math.min(12, rScale(degree[d.id]||1) * 0.7)))
-  .attr("fill", "#aaa").attr("fill-opacity", 0.7)
+  .attr("fill", "#ccc").attr("fill-opacity", 0.8)
   .attr("text-anchor", "middle").attr("dy", d => rScale(degree[d.id]||1) + 12)
   .style("pointer-events", "none").style("user-select", "none");
 
@@ -204,13 +204,13 @@ function updateHulls() {
     if (pts.length >= 3) {
       const hull = d3.polygonHull(pts);
       if (hull) {
-        // Smooth hull with padding
+        // Expand hull outward with generous padding
         const cx = d3.mean(hull, p => p[0]);
         const cy = d3.mean(hull, p => p[1]);
         const padded = hull.map(p => {
           const dx = p[0] - cx, dy = p[1] - cy;
           const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-          return [p[0] + dx/dist * 30, p[1] + dy/dist * 30];
+          return [p[0] + dx/dist * 40, p[1] + dy/dist * 40];
         });
         hullData.push({ id: cid, hull: padded });
       }
@@ -223,22 +223,10 @@ function updateHulls() {
     .attr("stroke", d => clusterColors[d.id] || "#666")
     .attr("stroke-opacity", 0.06)
     .attr("stroke-width", 1)
-    .attr("stroke-linejoin", "round")
     .merge(hulls)
     .attr("d", d => {
-      // Round the hull with curve
-      const pts = d.hull;
-      if (pts.length < 3) return "";
-      let path = `M${pts[0][0]},${pts[0][1]}`;
-      for (let i = 1; i < pts.length; i++) {
-        const prev = pts[i-1], curr = pts[i];
-        const mx = (prev[0]+curr[0])/2, my = (prev[1]+curr[1])/2;
-        path += ` Q${prev[0]},${prev[1]} ${mx},${my}`;
-      }
-      const last = pts[pts.length-1], first = pts[0];
-      path += ` Q${last[0]},${last[1]} ${(last[0]+first[0])/2},${(last[1]+first[1])/2}`;
-      path += "Z";
-      return path;
+      // Smooth catmull-rom curve through hull points
+      return d3.line().curve(d3.curveCatmullRomClosed.alpha(0.5))(d.hull);
     });
   hulls.exit().remove();
 }
