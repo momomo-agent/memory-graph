@@ -321,6 +321,14 @@ graphData.edges.forEach(e => {
   spreadAdj[e.to].push({ target: e.from, w: ew });
 });
 
+// Node degree for hub penalty
+const vizDegree = {};
+graphData.edges.forEach(e => { vizDegree[e.from] = (vizDegree[e.from]||0)+1; vizDegree[e.to] = (vizDegree[e.to]||0)+1; });
+const vizMedianDeg = (() => {
+  const vals = Object.values(vizDegree).sort((a,b) => a-b);
+  return vals[Math.floor(vals.length/2)] || 1;
+})();
+
 function spreadActivation(seed, maxDepth=3, decay=0.5, threshold=0.1) {
   const act = {}; act[seed] = 1.0;
   const queue = [{ id: seed, energy: 1.0, depth: 0 }];
@@ -330,7 +338,9 @@ function spreadActivation(seed, maxDepth=3, decay=0.5, threshold=0.1) {
     const nb = spreadAdj[id] || [];
     const maxW = Math.max(...nb.map(n => n.w), 1);
     for (const n of nb) {
-      const t = energy * (n.w / maxW) * decay;
+      const targetDeg = vizDegree[n.target] || 1;
+      const hubPenalty = targetDeg > vizMedianDeg * 2 ? vizMedianDeg / targetDeg : 1.0;
+      const t = energy * (n.w / maxW) * decay * hubPenalty;
       if (t < 0.005) continue;
       act[n.target] = (act[n.target] || 0) + t;
       if (t >= threshold * 0.3) queue.push({ id: n.target, energy: t, depth: depth + 1 });
