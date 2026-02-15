@@ -72,16 +72,23 @@ const graphData = {"version": 1, "updatedAt": "2026-02-15", "nodes": {"braindown
 // === COLOR MAP ===
 const clusterColors = {
   "design-system": "#FF6B6B",
-  "dev-framework": "#4ECDC4",
-  "braindown-tech": "#45B7D1",
-  "toolchain": "#96CEB4",
   "intera-engine": "#FFEAA7",
-  "ai-native-ui": "#DDA0DD",
-  "agent-eng": "#F0A500",
+  "cluster-jotjot": "#45B7D1",
+  "cluster-memory-system": "#7B68EE",
   "bookmark-tools": "#98D8C8",
-  "molttalk-stack": "#E8A87C",
+  "cluster-mind-palace": "#E8A87C",
+  "ai-native-ui": "#DDA0DD",
+  "cluster-agent-memory": "#F0A500",
+  "cluster-instinct-mode": "#FF8C69",
   "daily-brief-stack": "#85CDCA",
-  "interaction-design": "#C3AED6"
+  "molttalk-stack": "#C3AED6",
+  "cluster-webgpu": "#96CEB4",
+  "interaction-design": "#FFB6C1",
+  "cluster-vue-sfc-splitting": "#B8D4E3",
+  "cluster-anthropic-harness": "#4ECDC4",
+  "toolchain": "#A8E6CF",
+  "cluster-figma-plugin": "#DCEDC1",
+  "cluster-hci": "#FFD3B6"
 };
 const clusterLabels = {};
 const nodeCluster = {};
@@ -517,11 +524,8 @@ searchInput.addEventListener("input", () => {
 
 // === LEGEND ===
 const legendDiv = document.getElementById("legend");
-const legendItems = [
-  ["设计体系", "#FF6B6B"], ["开发方法论", "#4ECDC4"], ["BrainDown 技术栈", "#45B7D1"],
-  ["工具链", "#96CEB4"], ["Intera 动画引擎", "#FFEAA7"], ["AI 原生界面", "#DDA0DD"],
-  ["Agent 工程", "#F0A500"], ["收藏工具链", "#98D8C8"], ["无 cluster", "#666"]
-];
+const legendItems = graphData.clusters.map(c => [c.label, clusterColors[c.id] || "#888"]);
+legendItems.push(["无集群", "#dddddd"]);
 legendDiv.innerHTML = legendItems.map(([l, c]) =>
   `<div class="item"><div class="dot" style="background:${c};box-shadow:0 0 6px ${c}"></div>${l}</div>`
 ).join("");
