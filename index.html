@@ -290,15 +290,15 @@ const pulseEls = pulseG.selectAll("circle").data(strongLinks).join("circle")
 
 // Initialize node positions near center to prevent drift
 nodes.forEach(n => {
-  n.x = W/2 + (Math.random() - 0.5) * 200;
-  n.y = H/2 + (Math.random() - 0.5) * 200;
+  n.x = W/2 + (Math.random() - 0.5) * 400;
+  n.y = H/2 + (Math.random() - 0.5) * 400;
 });
 
 const sim = d3.forceSimulation(nodes)
   .force("link", d3.forceLink(links).id(d => d.id).distance(d => 80 / Math.sqrt(d.weight || 1)).strength(d => 0.3 * Math.sqrt(d.weight || 1)))
   .force("charge", d3.forceManyBody().strength(d => -100 - degree[d.id] * 6).distanceMax(500))
-  .force("centerX", d3.forceX(W / 2).strength(0.05))
-  .force("centerY", d3.forceY(H / 2).strength(0.05))
+  .force("centerX", d3.forceX(W / 2).strength(0.02))
+  .force("centerY", d3.forceY(H / 2).strength(0.02))
   .force("collision", d3.forceCollide().radius(d => rScale(degree[d.id]||1) + 10))
   .force("gravity", d3.forceRadial(0, W/2, H/2).strength(d => degree[d.id] <= 1 ? 0.04 : 0))
   // cluster attraction: same-cluster nodes pull together
@@ -430,6 +430,8 @@ nodeEls.on("click", (e, d) => {
     .attr("stroke-opacity", 0.02);
   labelEls.transition().duration(200)
     .attr("fill-opacity", 0.03);
+  particleEls.transition().duration(200)
+    .attr("fill-opacity", 0);
 
   // Light up activated nodes with delay based on "distance" (inverse activation)
   Object.entries(act).forEach(([nid, energy]) => {
@@ -444,7 +446,7 @@ nodeEls.on("click", (e, d) => {
       .attr("fill", getColor(nid));
   });
 
-  // Light up edges between activated nodes
+  // Light up edges between activated nodes + their particles
   const actSet = new Set(Object.keys(act));
   linkEls.filter(l => actSet.has(l.source.id) && actSet.has(l.target.id))
     .transition().delay(300).duration(500)
@@ -452,6 +454,9 @@ nodeEls.on("click", (e, d) => {
       const e = Math.min(act[l.source.id]||0, act[l.target.id]||0) / maxAct;
       return 0.2 + e * 0.7;
     });
+  particleEls.filter(p => actSet.has(p.link.source.id) && actSet.has(p.link.target.id))
+    .transition().delay(400).duration(500)
+    .attr("fill-opacity", 0.6);
 });
 
 // Click background to reset
@@ -465,6 +470,8 @@ svg.on("click", () => {
     .attr("stroke", (d, i) => `url(#lg${i})`);
   labelEls.transition().duration(400)
     .attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5).attr("fill", d => getColor(d.id));
+  particleEls.transition().duration(400)
+    .attr("fill-opacity", 0.6);
 });
 
 // === HOVER: EDGE ===
