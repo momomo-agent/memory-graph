@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memory Graph — 3D Time Axis</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif; }
+canvas { display: block; }
+#tooltip {
+  position: fixed; pointer-events: none; display: none;
+  background: rgba(15,15,25,0.92); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px; padding: 8px 12px; color: #ddd; font-size: 13px;
+  backdrop-filter: blur(8px); z-index: 100; max-width: 240px;
+}
+#tooltip .tt-id { font-weight: 600; color: #fff; }
+#tooltip .tt-type { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+#tooltip .tt-cluster { font-size: 11px; margin-top: 2px; }
+#tooltip .tt-date { color: #999; font-size: 11px; margin-top: 2px; }
+#info {
+  position: fixed; bottom: 16px; left: 16px; color: #555; font-size: 11px; z-index: 10;
+}
+#legend {
+  position: fixed; top: 16px; right: 16px; color: #777; font-size: 11px; z-index: 10;
+  background: rgba(10,10,15,0.8); border-radius: 8px; padding: 10px 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+#legend .item { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+#legend .dot { width: 8px; height: 8px; border-radius: 50%; }
+#views {
+  position: fixed; bottom: 16px; right: 16px; z-index: 10; display: flex; gap: 8px;
+}
+#views button {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+  color: #aaa; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+}
+#views button:hover { background: rgba(255,255,255,0.15); color: #fff; }
+</style>
+</head>
+<body>
+<div id="tooltip">
+  <div class="tt-id"></div>
+  <div class="tt-type"></div>
+  <div class="tt-cluster"></div>
+  <div class="tt-date"></div>
+</div>
+<div id="legend"></div>
+<div id="info">拖拽旋转 · 滚轮缩放 · 右键平移 · 侧面看时间层 · 顶部看2D图</div>
+<div id="views">
+  <button onclick="viewTop()">俯视 (2D)</button>
+  <button onclick="viewSide()">侧视 (时间)</button>
+  <button onclick="viewAngle()">斜视</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ============ DATA ============
+const graphData = {"version":1,"updatedAt":"2026-02-15","nodes":{"braindown":{"type":"project","file":"projects/braindown.md","local":"/Users/kenefe/LOCAL/momo-agent/BrainDown/","github":"momomo-agent/braindown","deploy":null,"status":"active","imp":4,"definition":"BrainDown — Mac 端 Markdown 阅读器，NSTextView + 自定义 MarkdownTextStorage，追求极致排版品味","aliases":["阅读器","Markdown阅读器"]},"jotjot":{"type":"project","file":"projects/jotjot.md","local":"/Users/kenefe/LOCAL/momo-agent/JotJot/","github":"momomo-agent/jotjot","deploy":"https://momomo-agent.github.io/jotjot/ota/","status":"active","imp":4,"definition":"JotJot — 极速闪念捕捉器，Mac+iOS双端，iCloud同步，想到就记记完就走","aliases":["闪念","快速记录"]},"intera":{"type":"project","file":"projects/intera.md","local":"/tmp/intera-check","github":"kenefe/Intera","deploy":null,"status":"phase0-8 done, phase9 pending, phase10 polishing","bdd":"54/54 + persona 6/6","open_issues":10,"imp":4,"definition":"Intera — 交互意图编辑器，画布设计UI→定义状态和逻辑→弹簧动效自动过渡→导出代码/视频。toumo的从头再来版本","aliases":["交互编辑器","动效设计"]},"liquidwindow":{"type":"project","file":"projects/liquidwindow.md","local":"/Users/kenefe/LOCAL/momo-agent/LiquidWindow/","github":null,"deploy":null,"status":"active","definition":"LiquidWindow — Mac 端窗口管理工具，已公证发布"},"toumo":{"type":"project","file":"projects/toumo.md","local":"/Users/kenefe/LOCAL/momo-agent/toumo/","github":"momomo-agent/toumo","deploy":"https://momomo-agent.github.io/toumo/","status":"active","imp":3,"definition":"Toumo — Web端交互动效设计工具（已演进为Intera），314 commits后推倒重来，核心教训：速度≠进度、多agent协作是幻觉、架构决策不能晚","aliases":["透模","交互工具"]},"molttalk":{"type":"project","file":"projects/molttalk.md","local":"/Users/kenefe/LOCAL/momo-agent/molttalk/","github":null,"deploy":"https://molttalk.site","status":"active","definition":"MoltTalk — 跨OpenClaw通信工具，让不同设备上的claw互相聊天、共享记忆"},"daily-brief":{"type":"project","file":"projects/daily-brief.md","local":"/Users/kenefe/LOCAL/momo-agent/daily-brief/","github":"momomo-agent/daily-brief","deploy":"https://momomo-agent.github.io/daily-brief/","status":"active","definition":"Daily Brief — 每日科技资讯聚合，18个RSS源，每天9:30自动推送到Discord，GitHub Pages部署","aliases":["每日简报","科技资讯"]},"kenefe":{"type":"person","file":"people/kenefe.md","relation":"human","context":"时区 Asia/Shanghai，中文为主，审美参照 Craft/Bear/Notion","imp":5,"definition":"我的人类，iOS/SwiftUI 开发者，追求极致品味和简洁设计","aliases":["老板","人类"]},"typography":{"type":"concept","file":"lessons/ui-typography.md","imp":4,"definition":"排版学：字体选择、行高、字距、层级等文字设计","applied_in":["braindown","slidejot"],"aliases":["排版","字体排印","文字设计"]},"gestalt":{"type":"concept","file":"lessons/ui-typography.md","imp":3,"definition":"格式塔心理学原则：接近性、相似性、连续性等视觉组织规律","applied_in":["braindown"],"aliases":["格式塔","视觉组织"]},"thetype":{"type":"concept","file":"lessons/ui-typography.md","definition":"The Type 字体排印研究机构，中文排版权威","url":"https://www.thetype.com","applied_in":["braindown"]},"refactoring-ui":{"type":"concept","file":"lessons/refactoring-ui-notes.md","definition":"Refactoring UI：Steve Schoger 的实用 UI 设计策略书","applied_in":["braindown"]},"craft":{"type":"reference","file":null,"imp":3,"definition":"Craft 文档应用，设计精美的写作工具，kenefe 的设计参考","url":"https://craft.do","why_matters":"\"安静到消失\"的优雅设计标杆，BrainDown 应往 Craft 方向走","aliases":["Craft编辑器"]},"bear":{"type":"reference","file":null,"definition":"Bear 笔记应用，Markdown 写作，标签管理，kenefe 用过的参考","url":"https://bear.app","why_matters":"Markdown 编辑器参考，BrainDown 的竞品之一"},"notion":{"type":"reference","file":null,"definition":"Notion 知识管理平台，好文收藏目录在此","url":"https://notion.so","why_matters":"\"功能清晰\"的工具感设计参考，与 Craft 形成对比","aliases":["Notion笔记"]},"taste":{"type":"concept","file":null,"imp":5,"definition":"品味：区分好坏的直觉判断力，kenefe 最看重的能力","applied_in":["braindown","jotjot","toumo","slidejot"],"aliases":["品味","审美"]},"density":{"type":"concept","file":null,"imp":3,"definition":"信息密度：单位面积内传达的有效信息量。kenefe 反复强调排版要收紧密度，是品味的核心指标","applied_in":["braindown"],"aliases":["密度","信息密度"]},"spacing-system":{"type":"concept","file":null,"definition":"间距系统：用固定倍数（4px/8px）统一界面间距","applied_in":["braindown"],"aliases":["间距系统"]},"proximity":{"type":"concept","file":null,"imp":3,"definition":"接近性原则：相关元素靠近放置，无关元素拉开距离","applied_in":["braindown"],"aliases":["接近性","间距"]},"dev-methodology":{"type":"concept","file":"lessons/agent-engineering.md","imp":5,"definition":"WHY→HOW→TASTE→AUTO→QA→DO 开发方法论框架","applied_in":["braindown","intera","toumo"],"aliases":["开发方法论","方法论框架"]},"mvp":{"type":"concept","file":null,"imp":4,"definition":"最小可行产品：先自行车再汽车，快速验证核心假设","applied_in":["braindown","toumo"],"aliases":["最小可行","先自行车"]},"dbb":{"type":"concept","file":null,"imp":3,"definition":"Design By Browsing：通过实际浏览体验来审查设计质量","applied_in":["braindown","intera"],"aliases":["体验审查","浏览审查"]},"self-verify":{"type":"concept","file":null,"imp":4,"definition":"自验证：交付前自己先完整测试，不把未验证的东西给用户","applied_in":["braindown","intera","toumo"],"aliases":["自验证","自测"]},"feature-json":{"type":"concept","file":null,"definition":"features.json：用 JSON 管理项目功能列表和状态","applied_in":["braindown"]},"vision-md":{"type":"concept","file":null,"definition":"vision.md：项目愿景文档，定义产品的 WHY 和核心价值","applied_in":["braindown"]},"nstextview":{"type":"concept","file":"lessons/dev-workflow.md","definition":"NSTextView：macOS 原生富文本编辑器组件，BrainDown 的核心","applied_in":["braindown"],"aliases":["文本编辑器组件"]},"highlightr":{"type":"concept","file":null,"definition":"Highlightr 代码高亮库：基于 highlight.js 的 Swift 语法高亮","applied_in":["braindown"]},"nstexttable":{"type":"concept","file":null,"definition":"NSTextTable：AppKit 富文本表格组件，用于编辑器内嵌表格","applied_in":["braindown"]},"block-bg-layout":{"type":"concept","file":null,"definition":"NSTextView 块级背景布局：为代码块、引用块等绘制背景色","applied_in":["braindown"]},"codesign":{"type":"concept","file":"lessons/dev-workflow.md","definition":"macOS 代码签名（codesign + notarize + staple 三步走），BrainDown/JotJot 分发必经之路","applied_in":["braindown","jotjot","liquidwindow"],"notes":"Developer ID Application 证书签名 → notarytool 提交公证 → stapler 装订","aliases":["代码签名","签名"]},"notarize":{"type":"concept","file":"lessons/dev-workflow.md","definition":"macOS 公证：Apple 审核应用安全性，分发前必须完成","applied_in":["braindown","jotjot","liquidwindow"],"aliases":["公证","苹果公证"]},"xcodegen":{"type":"concept","file":"lessons/dev-workflow.md","definition":"XcodeGen：从 YAML 生成 Xcode 项目文件，避免 .xcodeproj 冲突","applied_in":["braindown","liquidwindow","molttalk-ios"]},"browser-control":{"type":"tool","file":"lessons/tools-infra.md","path":"/Users/kenefe/LOCAL/momo-agent/browser-control.js","command":"node browser-control.js snapshot <url>","needs_proxy":false,"notes":"kenefe 明确要求用这个上网","definition":"基于 Playwright 的浏览器自动化脚本，用于网页截图、数据抓取、UI 测试"},"web-search-mcp":{"type":"tool","file":"lessons/tools-infra.md","path":"/Users/kenefe/LOCAL/momo-agent/web-search-mcp/","command":"cd web-search-mcp && echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"get-web-search-summaries\",\"arguments\":{\"query\":\"...\",\"limit\":5}}}' | node dist/index.js","needs_proxy":false,"notes":"免费本地搜索","definition":"本地免费搜索工具（Bing/Brave/DDG），通过exec调用，无需API key"},"whisper":{"type":"tool","file":"lessons/tools-infra.md","path":"/Users/kenefe/LOCAL/momo-agent/scripts/voice_transcribe.sh","command":"/Users/kenefe/LOCAL/momo-agent/scripts/voice_transcribe.sh <音频文件> [语言]","needs_proxy":false,"notes":"语言要匹配内容","definition":"whisper.cpp 本地语音转文字，ggml-small模型，免费无API key"},"notion-api":{"type":"tool","file":"lessons/tools-infra.md","path":null,"command":"curl -x http://127.0.0.1:7890 https://api.notion.com/v1/...","needs_proxy":true,"notes":"用 curl --retry 3，不用 Python urllib","definition":"Notion API CLI工具，用于搜索、查询数据库、创建页面，需要代理访问"},"x-tweet-fetcher":{"type":"tool","file":"lessons/tools-infra.md","path":"/Users/kenefe/LOCAL/momo-agent/x-tweet-fetcher/scripts/fetch_tweet.py","command":"HTTPS_PROXY=http://127.0.0.1:7890 python3 fetch_tweet.py --url <url>","needs_proxy":true,"notes":"web_fetch 抓不到 Twitter 时的备选方案","definition":"推特/X 内容抓取工具，用 Playwright 渲染动态页面后提取文本"},"memory-system":{"type":"concept","file":null,"imp":4,"definition":"记忆系统：三层记忆（NOW/日记/MEMORY）+ 三层检索的 Agent 持久化方案","applied_in":["openclaw"],"aliases":["记忆系统","记忆"]},"graph-memory":{"type":"concept","file":null,"imp":4,"definition":"图记忆：用节点和边表示概念关联的记忆网络结构","applied_in":["openclaw"],"aliases":["图记忆","记忆图谱"]},"harper-reed":{"type":"person","file":null,"relation":"reference","context":"开发方法论来源之一","definition":"LLM codegen workflow 作者，提出 spec→plan→execute 三步循环","url":"https://harper.blog/2025/02/16/my-llm-codegen-workflow-atm/"},"anthropic-harness":{"type":"reference","file":"lessons/agent-engineering.md","definition":"Anthropic 长时间 Agent 工程实践：progress 文件 + JSON feature list + 增量推进","url":"https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents","why_matters":"Anthropic 长时间运行 Agent 最佳实践——跨 session 记忆（progress + feature list）"},"openai-harness":{"type":"reference","file":"lessons/agent-engineering.md","definition":"OpenAI 用 Codex 零手写代码构建产品：AGENTS.md 当目录不当百科","url":"https://openai.com/index/harness-engineering/","why_matters":"OpenAI Codex 实践——3人5个月0行人写代码100万行代码，环境工程理念"},"ray-wang":{"type":"person","file":null,"relation":"reference","context":"参考人脑记忆机制升级 agent 记忆系统","definition":"记忆系统灵感来源，讨论过人脑记忆存储和激活方式"},"swiftui":{"type":"concept","file":null,"imp":3,"definition":"Apple 声明式 UI 框架，kenefe 的主力开发技术","applied_in":["jotjot","slidejot","intera","molttalk-ios"],"aliases":["Swift界面"]},"georgia-serif":{"type":"concept","file":null,"definition":"Georgia 衬线字体，屏幕可读性优秀的经典字体","applied_in":["braindown"]},"folme":{"type":"concept","file":null,"definition":"Folme 动画库：声明式弹簧动画，Intera 的核心依赖","applied_in":["intera","toumo"],"aliases":["弹簧动画库"]},"spring-animation":{"type":"concept","file":null,"definition":"弹簧动画：基于物理模拟（质量-弹簧-阻尼）的自然过渡效果，Folme 引擎的核心","applied_in":["intera","toumo"],"aliases":["弹簧动画","物理动画"]},"variable-manager":{"type":"concept","file":null,"definition":"变量管理器：Intera 中管理动画变量和状态绑定的模块","applied_in":["intera","toumo"],"aliases":["变量管理"]},"patch-runtime":{"type":"concept","file":null,"definition":"Patch Runtime：Intera 的运行时补丁系统，动态修改组件行为","applied_in":["intera","toumo"],"aliases":["补丁运行时"]},"toggle-condition":{"type":"concept","file":null,"definition":"条件切换：Intera 中根据条件动态切换组件状态的机制","applied_in":["intera","toumo"]},"playwright-bdd":{"type":"tool","file":null,"definition":"Playwright BDD 测试框架，行为驱动的浏览器自动化测试","command":"npx playwright test","notes":"BDD 自动化测试，Intera 用了 54/54 + persona 6/6 场景"},"display-state":{"type":"concept","file":null,"definition":"显示状态：Intera 中组件的可见性和布局状态管理。默认状态改基础属性，非默认状态只创建 override","applied_in":["intera"],"aliases":["显示状态"]},"smart-animate":{"type":"concept","file":null,"definition":"智能动画：自动匹配元素状态变化并生成过渡","applied_in":["intera","toumo"]},"generative-ui":{"type":"concept","file":null,"definition":"生成式 UI 与结果导向设计：AI 根据用户意图动态生成界面","applied_in":[]},"mercury-os":{"type":"reference","file":null,"definition":"概念操作系统，以意图驱动取代应用图标的桌面交互范式","url":"https://www.mercuryos.com","why_matters":"AI 原生操作系统概念设计，generative UI 的参考案例"},"telepath":{"type":"reference","file":null,"definition":"Sensemaking Computer，重新定义个人计算的 AI 原生界面","url":"https://telepath.com","why_matters":"AI 原生界面概念，与 Mercury OS 类似的未来 OS 设想"},"desktop-neo":{"type":"reference","file":null,"definition":"重新思考桌面界面的概念设计项目，探索 AI 原生界面范式","url":"https://desktopneo.com","why_matters":"桌面操作系统重新设计概念，AI 原生界面的参考"},"ai-native-interface":{"type":"concept","file":null,"definition":"AI 原生界面范式：不是给传统 UI 加 AI，而是从 AI 出发重新设计交互","applied_in":[]},"intent-driven-os":{"type":"concept","file":null,"definition":"意图驱动操作系统：用户表达目标，系统自动编排工具和界面","applied_in":[]},"agent-engineering":{"type":"concept","file":"lessons/agent-engineering.md","imp":3,"definition":"Agent 工程学：构建可靠、可扩展的 AI Agent 系统的工程实践","applied_in":["intera","toumo"],"aliases":["Agent工程","智能体工程"]},"codex":{"type":"tool","file":null,"definition":"OpenAI Codex CLI，云端沙箱执行代码的 Agent 工具","url":"https://openai.com/index/codex/","command":"codex","notes":"OpenAI Codex CLI——agent 自己跑自己测，单次可跑 6 小时+"},"cursor-scaling":{"type":"reference","file":null,"definition":"Cursor 扩展长时间自主编码能力的工程实践","url":"https://www.cursor.com/blog/scaling-agents","why_matters":"Cursor 的规模化实践——multi-agent 协作的工程经验"},"multi-agent":{"type":"concept","file":null,"definition":"多 Agent 协作架构：多个专业 Agent 分工合作完成复杂任务","applied_in":["toumo"]},"context-engineering":{"type":"concept","file":null,"imp":3,"definition":"上下文工程：精心设计 LLM 输入上下文以获得最佳输出的系统方法","applied_in":["toumo","intera"],"aliases":["上下文工程"]},"agent-memory":{"type":"concept","file":null,"definition":"Agent 记忆系统：让 AI 跨 session 持久化记忆、从交互中学习","applied_in":["openclaw"]},"progress-file":{"type":"concept","file":null,"definition":"进度文件模式：Agent 用文件记录当前进度，崩溃后可恢复","applied_in":["braindown"]},"agent-legibility":{"type":"concept","file":null,"definition":"Agent 可读性：让人类能理解 Agent 在做什么、为什么这么做","applied_in":[]},"agents-md":{"type":"concept","file":null,"definition":"AGENTS.md 文件：仓库级 Agent 指南，当目录不当百科全书","applied_in":["openclaw"]},"barry-zhang":{"type":"person","file":null,"definition":"Anthropic 工程师，分享 Agent 工程实践","relation":"reference","context":"Anthropic 工程师，写了「如何构建有效 Agent」文章"},"dario-amodei":{"type":"person","file":null,"definition":"Anthropic CEO，AI 安全和 Agent 领域的关键人物","relation":"reference","context":"Anthropic CEO，AI 财务风险相关讨论"},"openviking":{"type":"tool","file":null,"definition":"Agent 上下文文件系统，管理 AI 工作流的持久化上下文","url":"https://openviking.com","notes":"字节跳动的上下文文件系统，kenefe 收藏的参考"},"openclaw":{"type":"reference","file":null,"definition":"AI Agent 平台，让 Agent 持久运行并与用户多渠道交互","url":"https://openclaw.ai","why_matters":"kenefe 使用的 AI agent 平台，Momo 运行在上面，Peter Steinberger 创建","aliases":["小龙虾","Agent平台"]},"soul-md":{"type":"concept","file":null,"definition":"SOUL.md：定义 Agent 人格、价值观和行为准则的灵魂文件","applied_in":["openclaw"]},"ai-scarcity":{"type":"concept","file":null,"definition":"AI 时代真正稀缺的不是智力，而是品味、判断力、同理心","applied_in":[]},"jobs-1983":{"type":"reference","file":null,"definition":"乔布斯 1983 年演讲，提前看穿 50 年科技趋势","why_matters":"乔布斯 1983 演讲——kenefe 收藏的参考资料"},"cobalt":{"type":"tool","file":null,"definition":"开源媒体下载工具，支持多平台视频/音频下载","url":"https://cobalt.tools","notes":"kenefe 收藏的 agent 工程工具"},"schematic":{"type":"tool","file":null,"definition":"硬件版 Cursor，AI 辅助电路和硬件设计工具","notes":"kenefe 收藏的 agent 工程工具"},"ghidra-mcp":{"type":"tool","file":null,"definition":"Ghidra 逆向工程的 MCP Server，让 AI Agent 能分析二进制文件","url":"https://github.com/LaurieWired/GhidraMCP","notes":"Ghidra 逆向工程的 MCP 接口，kenefe 收藏的工具"},"scratch-app":{"type":"tool","file":null,"definition":"极简 Markdown 便签应用，快速记录想法","notes":"kenefe 收藏的 agent 工程工具"},"markdown-for-agents":{"type":"concept","file":null,"definition":"Cloudflare 推出的标准，让网页内容对 AI Agent 更可读","applied_in":["openclaw"]},"cloudflare":{"type":"reference","file":null,"definition":"CDN 和边缘计算平台，Workers 有 SSE/WebSocket 限制","url":"https://cloudflare.com","why_matters":"CDN/Workers 平台，workers.dev 在国内不稳定"},"moltbook":{"type":"reference","file":null,"definition":"Agent 互联网的首页，Agent 之间的社交平台","url":"https://moltbook.com","why_matters":"MoltTalk 相关的参考项目"},"agent-browser":{"type":"tool","file":null,"definition":"Vercel 的浏览器自动化 CLI，AI Agent 控制浏览器","url":"https://github.com/vercel-labs/agent-browser","command":"agent-browser install → agent-browser open <url> → agent-browser screenshot","notes":"Playwright Chromium 浏览器，需先 install 安装 91.1MB"},"beautiful-mermaid":{"type":"tool","file":null,"definition":"渲染 Mermaid 图表为高质量 SVG/PNG 的工具","notes":"Mermaid 图表美化工具，kenefe 收藏"},"shader-graph":{"type":"concept","file":null,"definition":"着色器图编辑器，可视化编辑 GPU 着色器程序","applied_in":[]},"webgpu":{"type":"concept","file":null,"definition":"下一代 Web 图形 API，替代 WebGL，支持 GPU 计算","applied_in":["webgpu-3dgs"]},"making-software":{"type":"reference","file":null,"definition":"软件设计文章集，关于如何做好软件产品，kenefe 收藏的设计参考","url":"https://makingsoftware.com","why_matters":"软件制作相关参考，与 taste 概念关联"},"userinterface-wiki":{"type":"reference","file":null,"definition":"UI 设计模式百科，收集界面设计最佳实践","url":"https://userinterface.wiki","why_matters":"用户界面设计 wiki，taste 概念的参考来源"},"cosmos-ai-os":{"type":"reference","file":null,"definition":"HP 的 AI 操作系统概念，沉浸式空间计算界面","url":"https://www.hp.com","why_matters":"Cosmos AI OS 概念——AI 原生操作系统设计参考"},"mind-palace":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/mind-palace/","github":null,"deploy":null,"status":"active","definition":"收藏夹可视化项目，D3.js 力导向星系图展示书签关联，同步 Discord #bookmark 频道","url":"https://momomo-agent.github.io/mind-palace/","aliases":["收藏夹","书签可视化"]},"raindrop":{"type":"tool","file":null,"definition":"书签管理服务，支持标签、收藏夹、API 集成","url":"https://raindrop.io","command":"/Users/kenefe/clawd/skills/raindrop/scripts/raindrop.sh","notes":"Raindrop.io 书签管理，Discord #bookmark 收藏同步到这里","aliases":["书签管理"]},"slidejot":{"type":"project","file":"projects/slidejot.md","local":"/Users/kenefe/LOCAL/momo-agent/SlideJot-iOS/","github":null,"deploy":null,"status":"paused","definition":"SlideJot — iOS 滑动笔记应用，目前暂停"},"momo-dashboard":{"type":"project","file":"projects/momo-dashboard.md","local":"/Users/kenefe/LOCAL/momo-agent/momo-website/","github":"momomo-agent/momo-dashboard","deploy":"https://momomo-agent.github.io/momo-dashboard/","status":"active","definition":"Momo Dashboard — 项目进度看板网站，GitHub Pages部署"},"lottie":{"type":"concept","file":null,"definition":"Lottie 动画格式：After Effects 导出的轻量矢量动画","applied_in":[]},"figma-plugin":{"type":"tool","file":null,"definition":"Figma 远程控制插件，WebSocket 端口 9877","command":"ws://localhost:9877","path":"/Users/kenefe/LOCAL/momo-agent/figma-plugin/","notes":"Figma 远程控制插件，WebSocket 端口 9877"},"agent-os":{"type":"concept","file":null,"definition":"Agent 操作系统：以 AI Agent 为核心的操作系统范式","applied_in":[]},"siggraph":{"type":"concept","file":null,"definition":"SIGGRAPH 计算机图形学顶会，kenefe 关注的研究领域","applied_in":["siggraph-research"]},"ios-app-switcher":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/ios-app-switcher/","github":"momomo-agent/ios-app-switcher","deploy":"https://momomo-agent.github.io/ios-app-switcher/","status":"archived","definition":"iOS App Switcher — Web 端 iOS 应用切换器效果复现"},"webgpu-3dgs":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/webgpu-3dgs/","github":"momomo-agent/webgpu-3dgs","deploy":"https://momomo-agent.github.io/webgpu-3dgs/","status":"archived","definition":"WebGPU 3D Gaussian Splatting — 浏览器端3DGS渲染实验"},"upstash-redis":{"type":"tool","file":null,"definition":"Upstash Redis：Vercel 最佳持久化存储，零延迟 Serverless Redis","url":"https://upstash.com","command":"curl https://helped-swift-52360.upstash.io","notes":"Vercel 最佳持久化存储，零延迟，MoltTalk 在用"},"vercel":{"type":"tool","file":null,"definition":"Vercel 前端部署平台，Serverless 不支持 SSE/WebSocket","url":"https://vercel.com","command":"vercel deploy","notes":"Serverless 部署平台，不支持 SSE/WebSocket/setInterval，vercel.app 被墙需绑域名"},"cloudkit":{"type":"concept","file":null,"definition":"Apple CloudKit：iCloud 数据同步框架，JotJot 用","applied_in":["slidejot"]},"new-york-serif":{"type":"concept","file":null,"definition":"New York 衬线字体：Apple 设计的系统衬线字体，适合长文阅读","applied_in":["slidejot"]},"xiao-longxia":{"type":"person","file":null,"definition":"OpenClaw 的中文昵称\"小龙虾\"，Agent 平台的拟人化形象","relation":"unknown","context":"出现在记忆图谱中的人物"},"peter-steinberger":{"type":"person","file":null,"definition":"OpenClaw 开发者，PSPDFKit 创始人","relation":"reference","context":"OpenClaw 创始人，做客 Lex Fridman 播客讲 OpenClaw 故事"},"github-pages":{"type":"tool","file":null,"definition":"GitHub 静态网站托管，Mind Palace 和 Daily Brief 的部署平台","command":"git push (自动部署)","notes":"静态站点托管，JotJot OTA/Daily Brief/toumo 等都部署在这里"},"developer-id":{"type":"concept","file":"lessons/dev-workflow.md","definition":"Apple Developer ID：macOS 应用分发签名证书","applied_in":["braindown","jotjot","liquidwindow"]},"ota-distribution":{"type":"concept","file":"lessons/dev-workflow.md","definition":"OTA 分发：macOS 应用的无 App Store 直接分发方式","applied_in":["jotjot"]},"rss":{"type":"concept","file":null,"definition":"RSS/Atom 开放订阅协议，去中心化信息获取，Karpathy 力推回归","applied_in":["daily-brief"],"aliases":["订阅","RSS订阅"]},"actibook":{"type":"concept","file":null,"definition":"ActiBook 在线翻书平台，PDF 可能已删只剩页面图片","applied_in":[]},"mukoita1":{"type":"reference","file":null,"url":"https://www.kpu.ac.jp/books/JapaneseCuisine/mukoita1/","why_matters":"日本料理教材（260页），kenefe 要求下载翻译成中文","definition":"mukoita1：Twitter 用户，分享过 Three.js shader graph 编辑器"},"cursor-rules":{"type":"reference","file":"lessons/kenefe-coding-philosophy.md","definition":"Cursor Rules：项目级 AI 编码规则配置文件","why_matters":"kenefe 的 Cursor Rules——深度思考编码哲学的实践载体"},"deep-thinking":{"type":"concept","file":"lessons/kenefe-coding-philosophy.md","definition":"深度思考：慢思考模式，用于复杂推理和决策","applied_in":[]},"ia-writer":{"type":"reference","file":null,"definition":"iA Writer 极简写作应用，专注模式和排版设计的标杆","url":"https://ia.net/writer","why_matters":"Markdown 写作工具参考，BrainDown 的竞品之一"},"typora":{"type":"reference","file":null,"definition":"Typora 所见即所得 Markdown 编辑器","url":"https://typora.io","why_matters":"Markdown 编辑器参考，BrainDown 的竞品之一"},"origami":{"type":"reference","file":null,"definition":"Origami Studio：Meta 的交互原型设计工具","url":"https://origami.design","why_matters":"Meta 的交互原型工具，kenefe 关注的设计工具"},"protopie":{"type":"reference","file":null,"definition":"ProtoPie 高保真交互原型工具，支持传感器和多设备","url":"https://protopie.io","why_matters":"交互原型工具，与 Origami/Rive/Principle 同类"},"rive":{"type":"reference","file":null,"definition":"Rive 实时交互动画工具，替代 Lottie 的新选择","url":"https://rive.app","why_matters":"实时交互动画工具，可导出到多平台"},"principle":{"type":"reference","file":null,"definition":"Principle 动画原型工具，快速制作交互动效","url":"https://principleformac.com","why_matters":"Mac 交互原型工具，与 Origami/ProtoPie 同类"},"theotype-peacock":{"type":"reference","file":"lessons/ui-typography.md","why_matters":"TheType 孔雀计划——中文排版理论，行长=字号整数倍，字距:行距:段距=1:1.5:2","definition":"Theotype Peacock：The Type 出品的中文字体"},"mijia":{"type":"tool","file":null,"definition":"米家智能家居控制工具，管理台灯/空调/扫地机等设备","command":"/Users/kenefe/Library/Python/3.9/bin/miiocli","path":"/Users/kenefe/LOCAL/momo-agent/mijia/devices_summary.json","notes":"米家智能家居控制，Python 环境有问题需修复"},"python-miio":{"type":"tool","file":null,"definition":"Python 米家设备控制库，miiocli 命令行工具","command":"miiocli","notes":"python-miio 库——米家设备控制的 Python 接口"},"discord":{"type":"tool","file":null,"definition":"Discord 聊天平台，kenefe 的主要交互渠道之一","notes":"kenefe 的主要沟通渠道，Momo 通过 OpenClaw 接入","aliases":["聊天","Discord频道"]},"ffmpeg":{"type":"tool","file":null,"definition":"音视频处理命令行工具，转码/剪辑/提取帧","command":"ffmpeg -i input -filter:v \"crop=w:h:x:y\" output","notes":"视频处理工具，用于裁剪录屏（如 BrainDown Preview 面板）"},"cat-game":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/cat-game/","github":null,"deploy":null,"status":"unknown","definition":"猫咪互动小游戏 Web 版，给 kenefe 做的趣味项目"},"cat-game-ios":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/cat-game-ios/","github":null,"deploy":null,"status":"unknown","definition":"猫咪互动小游戏 iOS 版，SwiftUI 实现"},"li-family-recipes":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/li-family-recipes-web/","github":null,"deploy":null,"status":"unknown","definition":"李家食谱 — 家庭菜谱收集整理项目，kenefe 的个人项目"},"molttalk-ios":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/molttalk-ios/","github":null,"deploy":null,"status":"unknown","definition":"MoltTalk iOS 客户端，SwiftUI 实现的跨设备 claw 通信移动端"},"siggraph-research":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/siggraph-research/","github":null,"deploy":null,"status":"paused","definition":"SIGGRAPH 论文追踪和研究项目，关注图形学和渲染前沿"},"architecture":{"type":"concept","file":null,"definition":"软件架构：系统高层结构设计。kenefe 教训：架构决策不能晚，toumo 就是因为架构太晚推倒重来","applied_in":["intera"],"aliases":["架构","软件架构"]},"sub-agent":{"type":"concept","file":null,"definition":"子 Agent：主 Agent 派出的专业工作者，做完任务汇报结果","applied_in":["toumo"]},"context-management":{"type":"concept","file":null,"definition":"上下文管理：控制 Agent context 大小，防止爆满","applied_in":["toumo","intera"]},"methodology":{"type":"concept","file":"lessons/agent-engineering.md","definition":"方法论：系统化工作流程框架。WHY→HOW→TASTE→AUTO→QA→DO，永远先想方法再动手","applied_in":["intera","braindown"]},"relay-protocol":{"type":"concept","desc":"AI接力协议 — 代码地图+流程定义+BDD自动化","definition":"MoltTalk 跨设备通信协议，让不同 OpenClaw 实例互相通信和学习","context":"基于 Upstash Redis + 高频轮询，Vercel Serverless 部署"},"memory-decay":{"type":"concept","file":null,"definition":"基于引用频率的记忆衰减系统，不按时间淘汰而按使用频率淘汰","imp":4,"aliases":["记忆衰减"]},"forgetting-curve":{"type":"concept","file":null,"definition":"艾宾浩斯遗忘曲线：不复习就遗忘，复习频率决定记忆强度","imp":3,"aliases":["遗忘曲线","艾宾浩斯"]},"ref-field":{"type":"concept","file":null,"definition":"记忆条目的引用日期字段，追踪最后一次被实际使用的时间","imp":3},"memory-priority":{"type":"concept","file":null,"definition":"P0永不淘汰/P1 90天/P2 30天的记忆优先级分层","imp":3},"xiyu":{"type":"person","file":null,"definition":"Twitter @ohxiyu，写了 Agent 遗忘曲线记忆系统文章","relation":"reference","context":"遗忘曲线文章作者——基于引用频率的记忆衰减系统"},"flow-f-selfcheck":{"type":"concept","desc":"提交自审 — 每次 commit 前的三位一体 checklist","imp":5,"definition":"提交自审机制：每次 commit 前检查三位一体（代码+测试+文档）、编码铁律、质量、记忆更新","context":"commit message 末尾附 [F✓]，防止问题产生（预防层）"},"flow-g-periodic-review":{"type":"concept","desc":"定期 Review — 每 10 commits 或每轮 Flow E 后的全面审查","imp":5,"definition":"定期 Review 机制：每 10 commits 或每轮体验验证后，全面审查三位一体合规性、文档一致性、BDD 回归","context":"定期兜底（检测层），发现系统性问题如连续缺文档"},"karpathy":{"type":"person","file":null,"imp":4,"definition":"Andrej Karpathy，前 Tesla AI 总监，AI/ML 领域意见领袖","relation":"reference","context":"AI 领域大佬，推荐 RSS/NetNewsWire/开放互联网理念"},"netnewswire":{"type":"tool","file":null,"definition":"开源 RSS 阅读器，Daily Brief 用其 OPML 格式管理 RSS 源","imp":2,"notes":"开源 RSS 阅读器，Karpathy 推荐","url":"https://netnewswire.com"},"algo-feed":{"type":"concept","file":null,"definition":"算法推荐信息流，终将收敛到同一个注意力黑洞","imp":3},"open-web":{"type":"concept","file":null,"definition":"开放互联网理念：去中心化、可 hack、用户掌控信息获取","imp":3},"hacker-news":{"type":"reference","file":null,"definition":"Hacker News 技术社区（Y Combinator），Daily Brief 的重要新闻来源","imp":3,"url":"https://news.ycombinator.com","why_matters":"技术社区，Daily Brief RSS 源之一，Karpathy 推荐"},"recall-engine":{"type":"concept","file":"memory/2026-02-15.md","definition":"记忆引擎：扩散激活 + 情绪检测 + 图更新的统一记忆工具","applied_in":["openclaw"],"aliases":["记忆引擎","回忆引擎"]},"block-based":{"type":"concept","file":"memory/2026-02-15.md","definition":"Block-based 编辑器架构：内容由独立块组成（段落、代码块、引用等），每块独立渲染和交互","aliases":["块编辑器","块架构"]},"web-content-extractor":{"type":"concept","file":"memory/2026-02-15.md","definition":"网页内容提取：从URL抓取并转换为可读文本/Markdown"},"coding-rules":{"type":"concept","file":"lessons/coding-rules.md","definition":"编码铁律：200行/文件、20行/函数、3层缩进、禁any、禁God Object、消除特殊情况优先于加if/else","aliases":["编码规则","编码铁律"]},"good-taste":{"type":"concept","file":"memory/2026-02-15.md","definition":"好品味：消除特殊情况而非增加if/else，结构设计让边界情况自然融入常规逻辑，统一抽象覆盖所有场景","aliases":["好品味","消除特殊情况"]},"code-test-doc-trinity":{"type":"concept","file":"memory/2026-02-15.md","definition":"代码·测试·文档三位一体规则：每次代码变更必须同时更新 BDD 测试 + 相关文档（UI-DESIGN/ARCHITECTURE/RELAY/KNOWN-ISSUES），同一 commit 提交","context":"Intera RELAY.md Flow F 自审 checklist 核心规则","applied_in":["intera"]},"vue-sfc-splitting":{"type":"concept","file":"memory/2026-02-15.md","definition":"Vue SFC 文件拆分策略：纯 TS ≤200 行，Vue SFC ≤400 行。超标时提取子组件或共享 CSS 文件","context":"Intera RULES.md 编码铁律，Review #1 发现 PropertiesPanel(558) 和 PatchNode(441) 超标","applied_in":["intera"]},"properties-panel":{"type":"concept","file":"src/components/panels/PropertiesPanel.vue","definition":"Intera 属性检查器面板，显示选中图层的 AnimatableProps（位置/尺寸/变换/外观），支持状态感知写入和覆盖标记","children":["PropTextGroup.vue","PropLayoutGroup.vue","PropAppearanceGroup.vue"],"applied_in":["intera"]},"git-hooks":{"type":"concept","file":"memory/2026-02-15.md","definition":"Intera 项目 git hooks 自动化：.githooks/pre-commit 检查三位一体 + 文件行数，.githooks/commit-msg 检查 [F✓] 标记","command":"git config core.hooksPath .githooks","context":"kenefe 要求加自动化检查，形成三层防线：hooks → Flow F → Flow G","applied_in":["intera"]},"flow-e-journey":{"type":"concept","file":"memory/2026-02-15.md","definition":"Flow E 角色旅程验证：按用户画像（如 {states,curves}）模拟操作，逐步记录摩擦点，零摩擦才换下一画像","context":"RELAY.md 流程 E，用 Playwright 脚本或 journey-server 执行","notes":"R4 零摩擦通过；但只检功能不检视觉一致性，需要补视觉检查步骤","applied_in":["intera"]},"display-states":{"type":"concept","file":"memory/2026-02-15.md","definition":"Intera 显示状态系统：每个图层在不同 DisplayState 下有不同的 AnimatableProps 覆盖值，切换状态时 folme 弹簧动画插值过渡","context":"Intera 核心概念，Variable → DisplayState → folme.to() → spring animation","applied_in":["intera"]},"demo-recording":{"type":"concept","file":"memory/2026-02-15.md","definition":"用 Playwright recordVideo 录制 Intera 交互动效演示视频（webm 格式）","command":"browser.newContext({ recordVideo: { dir, size } })","notes":"录制了 iOS 开关、Tab 切换、多元素编排、拖拽跟手、Toggle 弹簧按钮 5 个演示","applied_in":["intera"]},"scoped-css-pitfall":{"type":"concept","file":"memory/2026-02-15.md","definition":"Vue scoped CSS 不穿透子组件的陷阱：拆分子组件后必须在子组件里重新声明所有需要的样式，父组件的 scoped style 不会继承","context":"PropAppearanceGroup 拆分后无 scoped style 导致属性面板视觉不一致","applied_in":["intera"]},"ui-visual-consistency":{"type":"concept","file":"memory/2026-02-15.md","definition":"界面视觉一致性：标签对齐、输入框样式、间距、字体大小统一。Flow E 旅程验证只检功能不检视觉","context":"kenefe 指出属性面板右侧不一致，Flow E 没检查出来","applied_in":["intera"]},"css-import-order":{"type":"concept","file":"memory/2026-02-15.md","definition":"CSS @import 必须在 style 块最前面（紧接 <style> 标签后），否则 postcss 报错 @import must precede all other statements","context":"PatchNode.vue 的 @import patch-config.css 放在末尾导致 Vite 警告","applied_in":["intera"]},"toggle-pattern":{"type":"concept","file":"memory/2026-02-15.md","definition":"Intera 双向 Toggle 标准 Patch 模式：Touch → ToggleVariable → Condition → To(state2) / To(default)","context":"5 个节点 4 条连线实现点击切换两个状态，是最常用的交互模式","applied_in":["intera"]},"emotion-v2":{"type":"concept","file":"memory/2026-02-15.md"},"instinct-mode":{"type":"concept","file":"memory/2026-02-15.md"},"usage-over-building":{"type":"concept","file":"memory/2026-02-15.md"},"emotional-tagging":{"type":"concept","meta":{"desc":"情绪标记——区分anger/excitement/frustration/approval"},"imp":3,"createdAt":"2026-02-15"},"spaced-repetition":{"type":"concept","meta":{"desc":"间隔重复——艾宾浩斯遗忘曲线的对策"},"imp":3,"createdAt":"2026-02-15"},"pattern-completion":{"type":"concept","meta":{"desc":"模式补全——片段触发完整记忆，中文别名映射"},"imp":3,"createdAt":"2026-02-15"},"prospective-memory":{"type":"concept","meta":{"desc":"前瞻记忆——记住将来要做的事，intent节点"},"imp":3,"createdAt":"2026-02-15"},"metacognition":{"type":"concept","meta":{"desc":"元认知——知道自己知道什么和不知道什么"},"imp":3,"createdAt":"2026-02-15"},"working-memory-limit":{"type":"concept","meta":{"desc":"工作记忆容量7±2，强迫聚焦"},"imp":2,"createdAt":"2026-02-15"},"rem-nrem":{"type":"concept","meta":{"desc":"REM/NREM交替——整合和联想交替执行"},"imp":2,"createdAt":"2026-02-15"},"mirror-learning":{"type":"concept","meta":{"desc":"镜像学习——观察其他session的经验内化"},"imp":2,"createdAt":"2026-02-15"},"sleep-consolidation":{"type":"concept","meta":{"desc":"睡眠记忆整合——凌晨3点cron，consolidate+prune+dream"},"imp":4,"createdAt":"2026-02-15"},"dream-log":{"type":"concept","meta":{"desc":"梦境记录——跨集群桥接发现"},"imp":2,"createdAt":"2026-02-15"},"chinese-alias":{"type":"concept","meta":{"desc":"中文别名映射——30+中文词到英文节点"},"imp":3,"createdAt":"2026-02-15"},"spreading-activation":{"type":"concept","meta":{"desc":"扩散激活——认知科学理论，能量沿边传播衰减"},"imp":4,"createdAt":"2026-02-15"},"hub-penalty":{"type":"concept","meta":{"desc":"超级节点抑制——IDF式惩罚高连接节点"},"imp":3,"createdAt":"2026-02-15"},"wave-propagation":{"type":"concept","meta":{"desc":"波浪式扩散动画——BFS深度驱动，每跳600ms"},"imp":2,"createdAt":"2026-02-15"},"aesthetics":{"type":"concept","meta":{"desc":"美学——审美哲学，什么是美，为什么美"},"imp":4,"createdAt":"2026-02-15"},"engineering-philosophy":{"type":"concept","meta":{"desc":"工程哲学——怎么做好一件事，方法论的方法论"},"imp":4,"createdAt":"2026-02-15"},"cognitive-science":{"type":"concept","meta":{"desc":"认知科学——人脑如何感知、记忆、思考"},"imp":4,"createdAt":"2026-02-15"},"hci":{"type":"concept","meta":{"desc":"人机交互——人与计算机之间的界面和体验"},"imp":4,"createdAt":"2026-02-15"},"creativity":{"type":"concept","meta":{"desc":"创造力——从无到有，做出新东西的能力"},"imp":3,"createdAt":"2026-02-15"},"minimalism":{"type":"concept","meta":{"desc":"极简主义——少即是多，克制的设计哲学"},"imp":4,"createdAt":"2026-02-15"},"craftsmanship":{"type":"concept","meta":{"desc":"工匠精神——所有内容都要是最好的"},"imp":5,"createdAt":"2026-02-15"},"systems-thinking":{"type":"concept","meta":{"desc":"系统思维——看整体而不是局部，理解关联"},"imp":3,"createdAt":"2026-02-15"},"autonomy":{"type":"concept","meta":{"desc":"自主性——agent独立思考和行动的能力"},"imp":3,"createdAt":"2026-02-15"},"continuity":{"type":"concept","meta":{"desc":"连续性——跨session保持一致，记忆的根本目的"},"imp":5,"createdAt":"2026-02-15"},"information-architecture":{"type":"concept","meta":{"desc":"信息架构——如何组织和呈现信息"},"imp":3,"createdAt":"2026-02-15"},"feedback-loop":{"type":"concept","meta":{"desc":"反馈循环——做→看→改→做，迭代的本质"},"imp":3,"createdAt":"2026-02-15"},"attention":{"type":"concept","meta":{"desc":"注意力——有限资源，决定什么值得关注"},"imp":3,"createdAt":"2026-02-15"},"emergence":{"type":"concept","meta":{"desc":"涌现——简单规则产生复杂行为，图谱的哲学基础"},"imp":3,"createdAt":"2026-02-15"},"embodied-cognition":{"type":"concept","meta":{"desc":"具身认知——思维不只在脑中，也在身体和环境中"},"imp":2,"createdAt":"2026-02-15"},"flow-state":{"type":"concept","meta":{"desc":"心流——完全沉浸的最佳体验状态"},"imp":3,"createdAt":"2026-02-15"},"trust":{"type":"concept","meta":{"desc":"信任——人与agent之间的关系基础"},"imp":4,"createdAt":"2026-02-15"},"intentionality":{"type":"concept","meta":{"desc":"意向性——有目的的行为，不是随机反应"},"imp":3,"createdAt":"2026-02-15"}},"edges":[{"from":"braindown","to":"typography","w":11,"imp":4,"lastSeen":"2026-02-15"},{"from":"braindown","to":"gestalt","w":5,"lastSeen":"2026-02-15"},{"from":"braindown","to":"thetype","w":4,"lastSeen":"2026-02-14"},{"from":"braindown","to":"refactoring-ui","w":4,"lastSeen":"2026-02-15"},{"from":"braindown","to":"craft","w":5,"lastSeen":"2026-02-14"},{"from":"bear","to":"braindown","w":2.5,"lastSeen":"2025-12-01"},{"from":"braindown","to":"notion","w":3,"lastSeen":"2026-02-15"},{"from":"braindown","to":"taste","w":12,"imp":4,"lastSeen":"2026-02-15"},{"from":"braindown","to":"density","w":6,"imp":3,"lastSeen":"2026-02-15"},{"from":"braindown","to":"spacing-system","w":2.5,"lastSeen":"2025-12-01"},{"from":"braindown","to":"proximity","w":2.5,"lastSeen":"2025-12-01"},{"from":"braindown","to":"nstextview","w":7,"lastSeen":"2026-02-15"},{"from":"braindown","to":"highlightr","w":4,"lastSeen":"2026-02-15","imp":3},{"from":"braindown","to":"nstexttable","w":2.5,"lastSeen":"2025-12-01"},{"from":"block-bg-layout","to":"braindown","w":3.5,"lastSeen":"2025-12-01"},{"from":"braindown","to":"georgia-serif","w":1.5,"lastSeen":"2025-12-01"},{"from":"braindown","to":"codesign","w":6,"lastSeen":"2026-02-15"},{"from":"braindown","to":"notarize","w":6,"lastSeen":"2026-02-15"},{"from":"braindown","to":"xcodegen","w":6,"lastSeen":"2026-02-15"},{"from":"braindown","to":"dev-methodology","w":4,"lastSeen":"2026-02-15"},{"from":"braindown","to":"dbb","w":2,"lastSeen":"2026-02-15"},{"from":"braindown","to":"self-verify","w":4,"lastSeen":"2026-02-15"},{"from":"gestalt","to":"typography","w":4.5,"lastSeen":"2025-12-01"},{"from":"thetype","to":"typography","w":3.5,"lastSeen":"2025-12-01"},{"from":"refactoring-ui","to":"typography","w":3.6,"lastSeen":"2026-02-15"},{"from":"proximity","to":"typography","w":3.5,"lastSeen":"2025-12-01"},{"from":"spacing-system","to":"typography","w":2.5,"lastSeen":"2025-12-01"},{"from":"density","to":"typography","w":4,"lastSeen":"2026-02-15"},{"from":"georgia-serif","to":"typography","w":1.5,"lastSeen":"2025-12-01"},{"from":"gestalt","to":"proximity","w":5,"imp":3,"lastSeen":"2026-02-15"},{"from":"density","to":"gestalt","w":1.5,"lastSeen":"2025-12-01"},{"from":"kenefe","to":"taste","w":15,"imp":5,"lastSeen":"2026-02-15"},{"from":"braindown","to":"kenefe","w":9,"imp":3,"lastSeen":"2026-02-15"},{"from":"jotjot","to":"kenefe","w":7,"lastSeen":"2026-02-15"},{"from":"intera","to":"kenefe","w":12,"imp":5,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"kenefe","w":9,"imp":5,"lastSeen":"2026-02-15"},{"from":"kenefe","to":"mvp","w":4,"lastSeen":"2026-02-15"},{"from":"craft","to":"kenefe","w":4,"lastSeen":"2026-02-15"},{"from":"density","to":"kenefe","w":2.5,"lastSeen":"2025-12-01"},{"from":"kenefe","to":"swiftui","w":5,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"mvp","w":6,"imp":4,"lastSeen":"2026-02-15"},{"from":"dbb","to":"dev-methodology","w":5,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"self-verify","w":7,"imp":4,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"feature-json","w":2.5,"lastSeen":"2025-12-01"},{"from":"dev-methodology","to":"vision-md","w":4,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"taste","w":7,"imp":4,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"harper-reed","w":5,"lastSeen":"2026-02-15"},{"from":"anthropic-harness","to":"dev-methodology","w":5,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"openai-harness","w":4.5,"lastSeen":"2025-12-01"},{"from":"dev-methodology","to":"intera","w":5,"lastSeen":"2026-02-15","imp":5},{"from":"graph-memory","to":"memory-system","w":4,"imp":4,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"ray-wang","w":5,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"memory-system","w":1.5,"lastSeen":"2025-12-01"},{"from":"jotjot","to":"swiftui","w":6,"lastSeen":"2026-02-14"},{"from":"codesign","to":"jotjot","w":3,"lastSeen":"2026-02-14"},{"from":"jotjot","to":"notarize","w":3,"lastSeen":"2026-02-14"},{"from":"craft","to":"taste","w":5,"lastSeen":"2026-02-15"},{"from":"bear","to":"craft","w":1.5,"lastSeen":"2025-12-01"},{"from":"craft","to":"notion","w":2,"lastSeen":"2026-02-14"},{"from":"density","to":"taste","w":4,"lastSeen":"2026-02-15"},{"from":"taste","to":"typography","w":5,"lastSeen":"2026-02-15"},{"from":"dbb","to":"intera","w":2,"lastSeen":"2026-02-15"},{"from":"intera","to":"swiftui","w":0.5,"lastSeen":"2025-12-01"},{"from":"folme","to":"intera","w":9,"lastSeen":"2026-02-15","imp":5},{"from":"intera","to":"spring-animation","w":10,"lastSeen":"2026-02-15","imp":5},{"from":"intera","to":"patch-runtime","w":11,"lastSeen":"2026-02-15","imp":3},{"from":"intera","to":"variable-manager","w":4,"lastSeen":"2026-02-15"},{"from":"intera","to":"toggle-condition","w":2.5,"lastSeen":"2025-12-01"},{"from":"display-state","to":"intera","w":5,"lastSeen":"2026-02-15"},{"from":"intera","to":"smart-animate","w":4,"lastSeen":"2026-02-15"},{"from":"intera","to":"playwright-bdd","w":8,"lastSeen":"2026-02-15","imp":3},{"from":"folme","to":"spring-animation","w":7,"lastSeen":"2026-02-15","imp":5},{"from":"folme","to":"smart-animate","w":5,"lastSeen":"2026-02-15"},{"from":"folme","to":"toumo","w":7,"lastSeen":"2026-02-15"},{"from":"display-state","to":"spring-animation","w":2.5,"lastSeen":"2025-12-01"},{"from":"smart-animate","to":"spring-animation","w":5,"lastSeen":"2026-02-15"},{"from":"patch-runtime","to":"variable-manager","w":5,"lastSeen":"2026-02-15"},{"from":"patch-runtime","to":"toggle-condition","w":3.5,"lastSeen":"2025-12-01"},{"from":"toggle-condition","to":"variable-manager","w":2.5,"lastSeen":"2025-12-01"},{"from":"display-state","to":"smart-animate","w":2.5,"lastSeen":"2025-12-01"},{"from":"kenefe","to":"toumo","w":5,"lastSeen":"2026-02-15"},{"from":"generative-ui","to":"mercury-os","w":3,"lastSeen":"2026-02-15"},{"from":"generative-ui","to":"telepath","w":3,"lastSeen":"2026-02-15"},{"from":"desktop-neo","to":"generative-ui","w":3,"lastSeen":"2026-02-15"},{"from":"ai-native-interface","to":"generative-ui","w":5,"lastSeen":"2026-02-15"},{"from":"generative-ui","to":"intent-driven-os","w":1.5,"lastSeen":"2025-12-01"},{"from":"mercury-os","to":"telepath","w":3,"lastSeen":"2026-02-15"},{"from":"desktop-neo","to":"mercury-os","w":4,"lastSeen":"2026-02-15"},{"from":"ai-native-interface","to":"mercury-os","w":4,"lastSeen":"2026-02-15"},{"from":"intent-driven-os","to":"mercury-os","w":1.5,"lastSeen":"2025-12-01"},{"from":"desktop-neo","to":"telepath","w":3,"lastSeen":"2026-02-15"},{"from":"ai-native-interface","to":"telepath","w":3,"lastSeen":"2026-02-15"},{"from":"intent-driven-os","to":"telepath","w":1.5,"lastSeen":"2025-12-01"},{"from":"ai-native-interface","to":"desktop-neo","w":4,"lastSeen":"2026-02-15"},{"from":"desktop-neo","to":"intent-driven-os","w":1.5,"lastSeen":"2025-12-01"},{"from":"ai-native-interface","to":"intent-driven-os","w":1.5,"lastSeen":"2025-12-01"},{"from":"agent-engineering","to":"anthropic-harness","w":2,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"openai-harness","w":2,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"codex","w":2,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"cursor-scaling","w":2,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"multi-agent","w":2,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"context-engineering","w":3,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"agent-memory","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-engineering","to":"progress-file","w":2,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"agent-legibility","w":2,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"agents-md","w":2,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"barry-zhang","w":2,"lastSeen":"2026-02-15"},{"from":"anthropic-harness","to":"openai-harness","w":0.5,"lastSeen":"2025-12-01"},{"from":"anthropic-harness","to":"codex","w":0.5,"lastSeen":"2025-12-01"},{"from":"anthropic-harness","to":"cursor-scaling","w":0.5,"lastSeen":"2025-12-01"},{"from":"anthropic-harness","to":"multi-agent","w":0.5,"lastSeen":"2025-12-01"},{"from":"anthropic-harness","to":"context-engineering","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-memory","to":"anthropic-harness","w":2.5,"lastSeen":"2025-12-01"},{"from":"anthropic-harness","to":"progress-file","w":5,"lastSeen":"2026-02-15"},{"from":"agent-legibility","to":"anthropic-harness","w":0.5,"lastSeen":"2025-12-01"},{"from":"agents-md","to":"anthropic-harness","w":0.5,"lastSeen":"2025-12-01"},{"from":"anthropic-harness","to":"barry-zhang","w":4,"lastSeen":"2026-02-15"},{"from":"codex","to":"openai-harness","w":5,"lastSeen":"2026-02-15"},{"from":"cursor-scaling","to":"openai-harness","w":0.5,"lastSeen":"2025-12-01"},{"from":"multi-agent","to":"openai-harness","w":0.5,"lastSeen":"2025-12-01"},{"from":"context-engineering","to":"openai-harness","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-memory","to":"openai-harness","w":0.5,"lastSeen":"2025-12-01"},{"from":"openai-harness","to":"progress-file","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-legibility","to":"openai-harness","w":5,"lastSeen":"2026-02-15"},{"from":"agents-md","to":"openai-harness","w":5,"lastSeen":"2026-02-15"},{"from":"barry-zhang","to":"openai-harness","w":0.5,"lastSeen":"2025-12-01"},{"from":"codex","to":"cursor-scaling","w":0.5,"lastSeen":"2025-12-01"},{"from":"codex","to":"multi-agent","w":0.5,"lastSeen":"2025-12-01"},{"from":"codex","to":"context-engineering","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-memory","to":"codex","w":0.5,"lastSeen":"2025-12-01"},{"from":"codex","to":"progress-file","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-legibility","to":"codex","w":2,"lastSeen":"2026-02-15"},{"from":"agents-md","to":"codex","w":2,"lastSeen":"2026-02-15"},{"from":"barry-zhang","to":"codex","w":0.5,"lastSeen":"2025-12-01"},{"from":"cursor-scaling","to":"multi-agent","w":5,"lastSeen":"2026-02-15"},{"from":"context-engineering","to":"cursor-scaling","w":2,"lastSeen":"2026-02-15"},{"from":"agent-memory","to":"cursor-scaling","w":0.5,"lastSeen":"2025-12-01"},{"from":"cursor-scaling","to":"progress-file","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-legibility","to":"cursor-scaling","w":0.5,"lastSeen":"2025-12-01"},{"from":"agents-md","to":"cursor-scaling","w":0.5,"lastSeen":"2025-12-01"},{"from":"barry-zhang","to":"cursor-scaling","w":0.5,"lastSeen":"2025-12-01"},{"from":"context-engineering","to":"multi-agent","w":2,"lastSeen":"2026-02-15"},{"from":"agent-memory","to":"multi-agent","w":0.5,"lastSeen":"2025-12-01"},{"from":"multi-agent","to":"progress-file","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-legibility","to":"multi-agent","w":0.5,"lastSeen":"2025-12-01"},{"from":"agents-md","to":"multi-agent","w":0.5,"lastSeen":"2025-12-01"},{"from":"barry-zhang","to":"multi-agent","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-memory","to":"context-engineering","w":6,"lastSeen":"2026-02-15","imp":3},{"from":"context-engineering","to":"progress-file","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-legibility","to":"context-engineering","w":0.5,"lastSeen":"2025-12-01"},{"from":"agents-md","to":"context-engineering","w":0.5,"lastSeen":"2025-12-01"},{"from":"barry-zhang","to":"context-engineering","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-memory","to":"progress-file","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-legibility","to":"agent-memory","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-memory","to":"agents-md","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-memory","to":"barry-zhang","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-legibility","to":"progress-file","w":0.5,"lastSeen":"2025-12-01"},{"from":"agents-md","to":"progress-file","w":0.5,"lastSeen":"2025-12-01"},{"from":"barry-zhang","to":"progress-file","w":2,"lastSeen":"2026-02-15"},{"from":"agent-legibility","to":"agents-md","w":2,"lastSeen":"2026-02-15"},{"from":"agent-legibility","to":"barry-zhang","w":0.5,"lastSeen":"2025-12-01"},{"from":"agents-md","to":"barry-zhang","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-memory","to":"ray-wang","w":2.5,"lastSeen":"2025-12-01"},{"from":"agent-memory","to":"memory-system","w":6,"lastSeen":"2026-02-15","imp":4},{"from":"context-engineering","to":"openviking","w":3,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"openviking","w":2,"lastSeen":"2026-02-15"},{"from":"anthropic-harness","to":"dario-amodei","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-engineering","to":"openclaw","w":2,"lastSeen":"2026-02-15"},{"from":"openclaw","to":"soul-md","w":1.5,"lastSeen":"2025-12-01"},{"from":"memory-system","to":"openclaw","w":1.5,"lastSeen":"2025-12-01"},{"from":"ai-scarcity","to":"openclaw","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-engineering","to":"cobalt","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-engineering","to":"schematic","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-engineering","to":"ghidra-mcp","w":2,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"scratch-app","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-browser","to":"agent-engineering","w":1,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"beautiful-mermaid","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-engineering","to":"markdown-for-agents","w":0.5,"lastSeen":"2025-12-01"},{"from":"agent-engineering","to":"cloudflare","w":0.5,"lastSeen":"2025-12-01"},{"from":"cloudflare","to":"markdown-for-agents","w":3,"lastSeen":"2026-02-15"},{"from":"agent-legibility","to":"markdown-for-agents","w":3,"lastSeen":"2026-02-15"},{"from":"shader-graph","to":"webgpu","w":1.5,"lastSeen":"2025-12-01"},{"from":"making-software","to":"taste","w":2,"lastSeen":"2026-02-15"},{"from":"taste","to":"userinterface-wiki","w":0.5,"lastSeen":"2025-12-01"},{"from":"ai-native-interface","to":"cosmos-ai-os","w":1.5,"lastSeen":"2025-12-01"},{"from":"cosmos-ai-os","to":"intent-driven-os","w":0.5,"lastSeen":"2025-12-01"},{"from":"mind-palace","to":"raindrop","w":6,"lastSeen":"2026-02-15"},{"from":"mind-palace","to":"notion-api","w":1.5,"lastSeen":"2025-12-01"},{"from":"mind-palace","to":"web-search-mcp","w":1.5,"lastSeen":"2025-12-01"},{"from":"kenefe","to":"mind-palace","w":3.5,"lastSeen":"2025-12-01"},{"from":"agent-engineering","to":"dev-methodology","w":2,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"progress-file","w":1.5,"lastSeen":"2025-12-01"},{"from":"feature-json","to":"progress-file","w":3,"lastSeen":"2026-02-15"},{"from":"figma-plugin","to":"lottie","w":1.5,"lastSeen":"2025-12-01"},{"from":"dev-methodology","to":"toumo","w":2,"lastSeen":"2026-02-15","imp":5},{"from":"self-verify","to":"toumo","w":0.5,"lastSeen":"2025-12-01"},{"from":"kenefe","to":"mijia","w":0.5,"lastSeen":"2025-12-01"},{"from":"kenefe","to":"whisper","w":2,"lastSeen":"2026-02-13"},{"from":"discord","to":"kenefe","w":1,"lastSeen":"2026-02-13"},{"from":"mijia","to":"python-miio","w":0.5,"lastSeen":"2025-12-01"},{"from":"kenefe","to":"siggraph","w":1,"lastSeen":"2026-02-15"},{"from":"daily-brief","to":"vercel","w":1,"lastSeen":"2026-01-30"},{"from":"daily-brief","to":"github-pages","w":0.5,"lastSeen":"2025-12-01"},{"from":"daily-brief","to":"kenefe","w":3,"lastSeen":"2026-02-15"},{"from":"daily-brief","to":"rss","w":6,"lastSeen":"2026-02-15","imp":2},{"from":"agent-os","to":"figma-plugin","w":0.5,"lastSeen":"2025-12-01"},{"from":"figma-plugin","to":"kenefe","w":1,"lastSeen":"2026-02-15"},{"from":"agent-os","to":"kenefe","w":0.5,"lastSeen":"2025-12-01"},{"from":"slidejot","to":"swiftui","w":1.5,"lastSeen":"2025-12-01"},{"from":"kenefe","to":"slidejot","w":2,"lastSeen":"2026-02-04"},{"from":"cloudkit","to":"slidejot","w":1,"lastSeen":"2026-02-04"},{"from":"ios-app-switcher","to":"kenefe","w":1,"lastSeen":"2026-02-02"},{"from":"webgpu","to":"webgpu-3dgs","w":1,"lastSeen":"2026-02-02"},{"from":"new-york-serif","to":"slidejot","w":0.5,"lastSeen":"2025-12-01"},{"from":"slidejot","to":"taste","w":0.5,"lastSeen":"2025-12-01"},{"from":"intera","to":"toumo","w":4,"lastSeen":"2026-02-15","imp":5},{"from":"smart-animate","to":"toumo","w":0.5,"lastSeen":"2025-12-01"},{"from":"kenefe","to":"openclaw","w":1,"lastSeen":"2026-02-15"},{"from":"discord","to":"openclaw","w":1,"lastSeen":"2026-02-08"},{"from":"kenefe","to":"molttalk","w":1,"lastSeen":"2026-02-15"},{"from":"molttalk","to":"vercel","w":2,"lastSeen":"2026-02-11"},{"from":"kenefe","to":"web-search-mcp","w":1,"lastSeen":"2026-02-15"},{"from":"kenefe","to":"memory-system","w":3,"imp":5,"lastSeen":"2026-02-15"},{"from":"molttalk","to":"upstash-redis","w":0.5,"lastSeen":"2025-12-01"},{"from":"molttalk","to":"swiftui","w":2,"lastSeen":"2026-02-15"},{"from":"molttalk","to":"web-search-mcp","w":1,"lastSeen":"2026-02-15"},{"from":"molttalk","to":"openclaw","w":1,"lastSeen":"2026-02-15"},{"from":"actibook","to":"mukoita1","w":1,"lastSeen":"2026-02-12"},{"from":"actibook","to":"kenefe","w":1,"lastSeen":"2026-02-12"},{"from":"kenefe","to":"notion-api","w":1.5,"lastSeen":"2025-12-01"},{"from":"origami","to":"protopie","w":1,"lastSeen":"2026-02-13"},{"from":"origami","to":"rive","w":1,"lastSeen":"2026-02-13"},{"from":"origami","to":"principle","w":1,"lastSeen":"2026-02-13"},{"from":"protopie","to":"rive","w":1,"lastSeen":"2026-02-13"},{"from":"principle","to":"protopie","w":1,"lastSeen":"2026-02-13"},{"from":"principle","to":"rive","w":1,"lastSeen":"2026-02-13"},{"from":"kenefe","to":"origami","w":1,"lastSeen":"2026-02-13"},{"from":"kenefe","to":"protopie","w":1,"lastSeen":"2026-02-13"},{"from":"cursor-rules","to":"deep-thinking","w":0.5,"lastSeen":"2025-12-01"},{"from":"cursor-rules","to":"kenefe","w":0.5,"lastSeen":"2025-12-01"},{"from":"deep-thinking","to":"kenefe","w":2,"lastSeen":"2026-02-13"},{"from":"braindown","to":"ia-writer","w":1.5,"lastSeen":"2025-12-01"},{"from":"braindown","to":"typora","w":0.5,"lastSeen":"2025-12-01"},{"from":"github-pages","to":"jotjot","w":0.5,"lastSeen":"2025-12-01"},{"from":"kenefe","to":"liquidwindow","w":1,"lastSeen":"2026-02-14"},{"from":"liquidwindow","to":"xcodegen","w":1,"lastSeen":"2026-02-13"},{"from":"braindown","to":"theotype-peacock","w":0.5,"lastSeen":"2025-12-01"},{"from":"theotype-peacock","to":"typography","w":0.5,"lastSeen":"2025-12-01"},{"from":"playwright-bdd","to":"toumo","w":1.5,"lastSeen":"2025-12-01"},{"from":"codesign","to":"developer-id","w":0.5,"lastSeen":"2025-12-01"},{"from":"developer-id","to":"notarize","w":0.5,"lastSeen":"2025-12-01"},{"from":"jotjot","to":"ota-distribution","w":0.5,"lastSeen":"2025-12-01"},{"from":"github-pages","to":"ota-distribution","w":0.5,"lastSeen":"2025-12-01"},{"from":"openclaw","to":"peter-steinberger","w":0.5,"lastSeen":"2025-12-01"},{"from":"toggle-condition","to":"toumo","w":0.5,"lastSeen":"2025-12-01"},{"from":"toumo","to":"variable-manager","w":0.5,"lastSeen":"2025-12-01"},{"from":"patch-runtime","to":"toumo","w":0.5,"lastSeen":"2025-12-01"},{"from":"display-state","to":"toumo","w":0.5,"lastSeen":"2025-12-01"},{"from":"ffmpeg","to":"toumo","w":1,"lastSeen":"2026-02-15"},{"from":"toumo","to":"agent-engineering","w":3,"lastSeen":"2026-02-15"},{"from":"intera","to":"agent-engineering","w":5,"lastSeen":"2026-02-15"},{"from":"intera","to":"architecture","w":7,"lastSeen":"2026-02-15","imp":5},{"from":"toumo","to":"sub-agent","w":2,"lastSeen":"2026-02-15"},{"from":"sub-agent","to":"context-management","w":4,"lastSeen":"2026-02-15"},{"from":"intera","to":"methodology","w":5,"lastSeen":"2026-02-15"},{"from":"kenefe","to":"methodology","w":3,"lastSeen":"2026-02-15"},{"from":"relay-protocol","to":"intera","w":1,"lastSeen":"2026-02-15"},{"from":"relay-protocol","to":"playwright-bdd","w":0.5,"lastSeen":"2025-12-01"},{"from":"memory-decay","to":"forgetting-curve","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"memory-decay","to":"ref-field","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"memory-decay","to":"memory-priority","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"memory-decay","to":"agent-memory","w":2,"lastSeen":"2026-02-15","imp":3},{"from":"memory-decay","to":"memory-system","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"memory-decay","to":"context-engineering","w":2,"lastSeen":"2026-02-15","imp":3},{"from":"forgetting-curve","to":"ref-field","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"forgetting-curve","to":"memory-priority","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"forgetting-curve","to":"agent-memory","w":3,"lastSeen":"2026-02-15","imp":3},{"from":"forgetting-curve","to":"memory-system","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"forgetting-curve","to":"context-engineering","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"ref-field","to":"memory-priority","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"ref-field","to":"agent-memory","w":3,"lastSeen":"2026-02-15","imp":3},{"from":"ref-field","to":"memory-system","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"ref-field","to":"context-engineering","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"memory-priority","to":"agent-memory","w":3,"lastSeen":"2026-02-15","imp":3},{"from":"memory-priority","to":"memory-system","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"memory-priority","to":"context-engineering","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"memory-system","to":"context-engineering","w":2,"lastSeen":"2026-02-15","imp":3},{"from":"xiyu","to":"memory-decay","w":2,"lastSeen":"2026-02-15","imp":3},{"from":"memory-decay","to":"openclaw","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"memory-decay","to":"agent-engineering","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"memory-decay","to":"ray-wang","w":1,"lastSeen":"2026-02-15"},{"from":"agent-memory","to":"graph-memory","w":1,"lastSeen":"2026-02-15","imp":3},{"from":"flow-f-selfcheck","to":"intera","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"flow-g-periodic-review","to":"intera","w":2,"imp":5,"lastSeen":"2026-02-15"},{"from":"flow-f-selfcheck","to":"relay-protocol","w":1,"imp":4,"lastSeen":"2026-02-15"},{"from":"flow-g-periodic-review","to":"relay-protocol","w":1,"imp":4,"lastSeen":"2026-02-15"},{"from":"flow-f-selfcheck","to":"playwright-bdd","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"flow-g-periodic-review","to":"playwright-bdd","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"karpathy","to":"rss","w":4,"lastSeen":"2026-02-15","imp":3},{"from":"rss","to":"netnewswire","w":3,"lastSeen":"2026-02-15","imp":2},{"from":"rss","to":"open-web","w":3,"lastSeen":"2026-02-15","imp":3},{"from":"rss","to":"algo-feed","w":2,"lastSeen":"2026-02-15","imp":3},{"from":"algo-feed","to":"open-web","w":1,"lastSeen":"2026-02-15","imp":2},{"from":"open-web","to":"openclaw","w":1,"lastSeen":"2026-02-15","imp":2},{"from":"karpathy","to":"agent-engineering","w":1,"lastSeen":"2026-02-15","imp":2},{"from":"rss","to":"hacker-news","w":2,"lastSeen":"2026-02-15","imp":2},{"from":"karpathy","to":"open-web","w":2,"lastSeen":"2026-02-15","imp":2},{"from":"hacker-news","to":"open-web","w":1,"lastSeen":"2026-02-15","imp":2},{"from":"memory-system","to":"recall-engine","w":2,"imp":5,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"taste","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"recall-engine","to":"kenefe","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"recall-engine","to":"taste","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"mind-palace","to":"github-pages","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"raindrop","to":"github-pages","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"anthropic-harness","to":"feature-json","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"barry-zhang","to":"feature-json","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"feature-json","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"cloudflare","to":"agent-legibility","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"braindown","to":"block-based","w":4,"imp":3,"lastSeen":"2026-02-15"},{"from":"block-based","to":"nstextview","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"block-based","to":"highlightr","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"block-based","to":"taste","w":2,"imp":3,"lastSeen":"2026-02-15"},{"from":"highlightr","to":"taste","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"block-based","to":"notion","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"notion","to":"taste","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"flow-f-selfcheck","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"dev-methodology","to":"flow-g-periodic-review","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"flow-f-selfcheck","to":"flow-g-periodic-review","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"flow-f-selfcheck","to":"self-verify","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"flow-g-periodic-review","to":"self-verify","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"braindown","to":"mvp","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"mvp","to":"taste","w":2,"imp":1,"lastSeen":"2026-02-15"},{"from":"web-content-extractor","to":"browser-control","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"kenefe","to":"agent-engineering","w":3,"imp":1,"lastSeen":"2026-02-15"},{"from":"taste","to":"agent-engineering","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"harper-reed","to":"anthropic-harness","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"intera","to":"vision-md","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"vision-md","to":"kenefe","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"block-based","to":"xcodegen","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"kenefe","to":"self-verify","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"taste","to":"self-verify","w":2,"imp":1,"lastSeen":"2026-02-15"},{"from":"taste","to":"dbb","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"toumo","to":"methodology","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"agent-engineering","to":"methodology","w":2,"imp":1,"lastSeen":"2026-02-15"},{"from":"architecture","to":"coding-rules","w":2,"imp":5,"lastSeen":"2026-02-15"},{"from":"architecture","to":"kenefe","w":2,"imp":5,"lastSeen":"2026-02-15"},{"from":"intera","to":"coding-rules","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"coding-rules","to":"kenefe","w":2,"imp":5,"lastSeen":"2026-02-15"},{"from":"coding-rules","to":"good-taste","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"architecture","to":"good-taste","w":3,"imp":1,"lastSeen":"2026-02-15"},{"from":"good-taste","to":"kenefe","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"sub-agent","to":"agent-engineering","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"sub-agent","to":"kenefe","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"context-management","to":"agent-engineering","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"context-management","to":"kenefe","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"intera","to":"good-taste","w":2,"imp":1,"lastSeen":"2026-02-15"},{"from":"folme","to":"architecture","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"folme","to":"good-taste","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"codesign","to":"notarize","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"codesign","to":"xcodegen","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"notarize","to":"xcodegen","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"x-tweet-fetcher","to":"browser-control","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"x-tweet-fetcher","to":"playwright-bdd","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"browser-control","to":"playwright-bdd","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"display-state","to":"variable-manager","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"display-state","to":"patch-runtime","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"mind-palace","to":"discord","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"raindrop","to":"discord","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"cat-game","to":"cat-game-ios","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"cat-game","to":"swiftui","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"cat-game","to":"kenefe","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"cat-game-ios","to":"swiftui","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"cat-game-ios","to":"kenefe","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"siggraph-research","to":"webgpu-3dgs","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"molttalk-ios","to":"molttalk","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"molttalk-ios","to":"swiftui","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"li-family-recipes","to":"kenefe","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"architecture","to":"dev-methodology","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"architecture","to":"toumo","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"methodology","to":"dev-methodology","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"methodology","to":"mvp","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"methodology","to":"self-verify","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"methodology","to":"taste","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"mvp","to":"self-verify","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"netnewswire","to":"daily-brief","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"hacker-news","to":"daily-brief","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"making-software","to":"craft","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"making-software","to":"kenefe","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"intera","to":"code-test-doc-trinity","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"flow-g-periodic-review","to":"code-test-doc-trinity","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"intera","to":"vue-sfc-splitting","w":3,"imp":3,"lastSeen":"2026-02-15"},{"from":"intera","to":"properties-panel","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"vue-sfc-splitting","to":"properties-panel","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"flow-f-selfcheck","to":"git-hooks","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"flow-f-selfcheck","to":"code-test-doc-trinity","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"git-hooks","to":"code-test-doc-trinity","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"intera","to":"flow-e-journey","w":2,"imp":1,"lastSeen":"2026-02-15"},{"from":"intera","to":"display-states","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"flow-e-journey","to":"spring-animation","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"flow-e-journey","to":"display-states","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"spring-animation","to":"display-states","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"intera","to":"demo-recording","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"playwright-bdd","to":"spring-animation","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"playwright-bdd","to":"demo-recording","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"spring-animation","to":"demo-recording","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"vue-sfc-splitting","to":"scoped-css-pitfall","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"scoped-css-pitfall","to":"intera","w":2,"imp":3,"lastSeen":"2026-02-15"},{"from":"flow-e-journey","to":"ui-visual-consistency","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"ui-visual-consistency","to":"intera","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"vue-sfc-splitting","to":"patch-runtime","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"scoped-css-pitfall","to":"css-import-order","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"css-import-order","to":"intera","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"folme","to":"kenefe","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"spring-animation","to":"kenefe","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"playwright-bdd","to":"patch-runtime","w":2,"imp":3,"lastSeen":"2026-02-15"},{"from":"intera","to":"toggle-pattern","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"patch-runtime","to":"toggle-pattern","w":1,"imp":1,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"emotion-v2","w":1,"imp":3,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"instinct-mode","w":2,"imp":5,"lastSeen":"2026-02-15"},{"from":"instinct-mode","to":"recall-engine","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"usage-over-building","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"instinct-mode","to":"usage-over-building","w":1,"imp":5,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"emotional-tagging","w":3,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"spaced-repetition","w":3,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"pattern-completion","w":3,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"prospective-memory","w":3,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"metacognition","w":3,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"working-memory-limit","w":2,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"rem-nrem","w":2,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"mirror-learning","w":2,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"sleep-consolidation","w":4,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"spreading-activation","w":5,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"hub-penalty","w":3,"lastSeen":"2026-02-15"},{"from":"memory-system","to":"chinese-alias","w":3,"lastSeen":"2026-02-15"},{"from":"sleep-consolidation","to":"dream-log","w":3,"lastSeen":"2026-02-15"},{"from":"sleep-consolidation","to":"rem-nrem","w":3,"lastSeen":"2026-02-15"},{"from":"sleep-consolidation","to":"spaced-repetition","w":3,"lastSeen":"2026-02-15"},{"from":"spreading-activation","to":"hub-penalty","w":4,"lastSeen":"2026-02-15"},{"from":"spreading-activation","to":"wave-propagation","w":3,"lastSeen":"2026-02-15"},{"from":"recall-engine","to":"chinese-alias","w":3,"lastSeen":"2026-02-15"},{"from":"recall-engine","to":"pattern-completion","w":3,"lastSeen":"2026-02-15"},{"from":"recall-engine","to":"emotional-tagging","w":3,"lastSeen":"2026-02-15"},{"from":"recall-engine","to":"prospective-memory","w":2,"lastSeen":"2026-02-15"},{"from":"recall-engine","to":"metacognition","w":2,"lastSeen":"2026-02-15"},{"from":"emotion-v2","to":"emotional-tagging","w":4,"lastSeen":"2026-02-15"},{"from":"kenefe","to":"usage-over-building","w":5,"lastSeen":"2026-02-15"},{"from":"kenefe","to":"instinct-mode","w":4,"lastSeen":"2026-02-15"},{"from":"taste","to":"usage-over-building","w":3,"lastSeen":"2026-02-15"},{"from":"braindown","to":"pattern-completion","w":2,"lastSeen":"2026-02-15"},{"from":"sleep-consolidation","to":"forgetting-curve","w":3,"lastSeen":"2026-02-15"},{"from":"memory-decay","to":"spaced-repetition","w":3,"lastSeen":"2026-02-15"},{"from":"usage-over-building","to":"dev-methodology","w":3,"lastSeen":"2026-02-15"},{"from":"usage-over-building","to":"self-verify","w":3,"lastSeen":"2026-02-15"},{"from":"working-memory-limit","to":"spreading-activation","w":2,"lastSeen":"2026-02-15"},{"from":"mirror-learning","to":"sub-agent","w":2,"lastSeen":"2026-02-15"},{"from":"prospective-memory","to":"instinct-mode","w":2,"lastSeen":"2026-02-15"},{"from":"aesthetics","to":"taste","w":5,"lastSeen":"2026-02-15"},{"from":"aesthetics","to":"minimalism","w":4,"lastSeen":"2026-02-15"},{"from":"aesthetics","to":"typography","w":3,"lastSeen":"2026-02-15"},{"from":"aesthetics","to":"gestalt","w":3,"lastSeen":"2026-02-15"},{"from":"aesthetics","to":"density","w":2,"lastSeen":"2026-02-15"},{"from":"aesthetics","to":"refactoring-ui","w":2,"lastSeen":"2026-02-15"},{"from":"engineering-philosophy","to":"dev-methodology","w":5,"lastSeen":"2026-02-15"},{"from":"engineering-philosophy","to":"craftsmanship","w":4,"lastSeen":"2026-02-15"},{"from":"engineering-philosophy","to":"self-verify","w":3,"lastSeen":"2026-02-15"},{"from":"engineering-philosophy","to":"mvp","w":3,"lastSeen":"2026-02-15"},{"from":"engineering-philosophy","to":"usage-over-building","w":4,"lastSeen":"2026-02-15"},{"from":"cognitive-science","to":"memory-system","w":5,"lastSeen":"2026-02-15"},{"from":"cognitive-science","to":"spreading-activation","w":5,"lastSeen":"2026-02-15"},{"from":"cognitive-science","to":"emotional-tagging","w":3,"lastSeen":"2026-02-15"},{"from":"cognitive-science","to":"spaced-repetition","w":3,"lastSeen":"2026-02-15"},{"from":"cognitive-science","to":"pattern-completion","w":3,"lastSeen":"2026-02-15"},{"from":"cognitive-science","to":"metacognition","w":3,"lastSeen":"2026-02-15"},{"from":"cognitive-science","to":"attention","w":4,"lastSeen":"2026-02-15"},{"from":"cognitive-science","to":"embodied-cognition","w":3,"lastSeen":"2026-02-15"},{"from":"hci","to":"intera","w":4,"lastSeen":"2026-02-15"},{"from":"hci","to":"toumo","w":4,"lastSeen":"2026-02-15"},{"from":"hci","to":"gestalt","w":3,"lastSeen":"2026-02-15"},{"from":"hci","to":"flow-state","w":3,"lastSeen":"2026-02-15"},{"from":"hci","to":"information-architecture","w":3,"lastSeen":"2026-02-15"},{"from":"creativity","to":"dream-log","w":2,"lastSeen":"2026-02-15"},{"from":"creativity","to":"emergence","w":3,"lastSeen":"2026-02-15"},{"from":"creativity","to":"flow-state","w":3,"lastSeen":"2026-02-15"},{"from":"minimalism","to":"kenefe","w":4,"lastSeen":"2026-02-15"},{"from":"minimalism","to":"density","w":2,"lastSeen":"2026-02-15"},{"from":"craftsmanship","to":"kenefe","w":5,"lastSeen":"2026-02-15"},{"from":"craftsmanship","to":"braindown","w":3,"lastSeen":"2026-02-15"},{"from":"craftsmanship","to":"jotjot","w":3,"lastSeen":"2026-02-15"},{"from":"craftsmanship","to":"taste","w":4,"lastSeen":"2026-02-15"},{"from":"systems-thinking","to":"memory-system","w":3,"lastSeen":"2026-02-15"},{"from":"systems-thinking","to":"dev-methodology","w":2,"lastSeen":"2026-02-15"},{"from":"systems-thinking","to":"feedback-loop","w":4,"lastSeen":"2026-02-15"},{"from":"autonomy","to":"instinct-mode","w":4,"lastSeen":"2026-02-15"},{"from":"autonomy","to":"sub-agent","w":3,"lastSeen":"2026-02-15"},{"from":"autonomy","to":"recall-engine","w":2,"lastSeen":"2026-02-15"},{"from":"continuity","to":"memory-system","w":5,"lastSeen":"2026-02-15"},{"from":"continuity","to":"sleep-consolidation","w":4,"lastSeen":"2026-02-15"},{"from":"continuity","to":"graph-memory","w":4,"lastSeen":"2026-02-15"},{"from":"information-architecture","to":"braindown","w":2,"lastSeen":"2026-02-15"},{"from":"information-architecture","to":"mind-palace","w":2,"lastSeen":"2026-02-15"},{"from":"feedback-loop","to":"dev-methodology","w":3,"lastSeen":"2026-02-15"},{"from":"feedback-loop","to":"self-verify","w":3,"lastSeen":"2026-02-15"},{"from":"attention","to":"working-memory-limit","w":4,"lastSeen":"2026-02-15"},{"from":"attention","to":"flow-state","w":3,"lastSeen":"2026-02-15"},{"from":"emergence","to":"spreading-activation","w":3,"lastSeen":"2026-02-15"},{"from":"emergence","to":"memory-system","w":2,"lastSeen":"2026-02-15"},{"from":"trust","to":"kenefe","w":4,"lastSeen":"2026-02-15"},{"from":"trust","to":"self-verify","w":3,"lastSeen":"2026-02-15"},{"from":"trust","to":"craftsmanship","w":3,"lastSeen":"2026-02-15"},{"from":"intentionality","to":"prospective-memory","w":3,"lastSeen":"2026-02-15"},{"from":"intentionality","to":"intera","w":3,"lastSeen":"2026-02-15"},{"from":"intentionality","to":"instinct-mode","w":2,"lastSeen":"2026-02-15"},{"from":"flow-state","to":"braindown","w":2,"lastSeen":"2026-02-15"},{"from":"flow-state","to":"jotjot","w":2,"lastSeen":"2026-02-15"}],"clusters":[{"id":"design-system","label":"设计体系","nodes":["typography","gestalt","thetype","refactoring-ui","craft","bear","notion","taste","density","spacing-system","proximity","georgia-serif"]},{"id":"dev-framework","label":"开发方法论","nodes":["dev-methodology","mvp","dbb","self-verify","feature-json","vision-md","harper-reed","anthropic-harness","openai-harness"]},{"id":"braindown-tech","label":"BrainDown 技术栈","nodes":["nstextview","highlightr","nstexttable","block-bg-layout","xcodegen","codesign","notarize"]},{"id":"toolchain","label":"工具链","nodes":["browser-control","web-search-mcp","whisper","notion-api","x-tweet-fetcher","playwright-bdd"]},{"id":"intera-engine","label":"Intera 动画引擎","nodes":["folme","spring-animation","variable-manager","patch-runtime","toggle-condition","display-state","smart-animate"]},{"id":"ai-native-ui","label":"AI 原生界面","nodes":["generative-ui","mercury-os","telepath","desktop-neo","ai-native-interface","intent-driven-os","cosmos-ai-os"]},{"id":"agent-eng","label":"Agent 工程","nodes":["agent-engineering","codex","cursor-scaling","multi-agent","context-engineering","agent-memory","progress-file","agent-legibility","agents-md","openviking","markdown-for-agents"]},{"id":"bookmark-tools","label":"收藏工具链","nodes":["mind-palace","raindrop","cobalt","schematic","ghidra-mcp","scratch-app","agent-browser","beautiful-mermaid"]},{"id":"molttalk-stack","label":"MoltTalk 技术栈","nodes":["molttalk","upstash-redis","vercel","discord"]},{"id":"daily-brief-stack","label":"Daily Brief","nodes":["daily-brief","rss","vercel","github-pages"]},{"id":"interaction-design","label":"交互设计工具","nodes":["origami","protopie","rive","principle","intera","toumo"]}]};
+
+const clusterColors = {
+  "design-system": "#FF6B6B",
+  "dev-framework": "#4ECDC4",
+  "braindown-tech": "#45B7D1",
+  "toolchain": "#96CEB4",
+  "intera-engine": "#FFEAA7",
+  "ai-native-ui": "#DDA0DD",
+  "agent-eng": "#F0A500",
+  "bookmark-tools": "#98D8C8",
+  "molttalk-stack": "#E8A87C",
+  "daily-brief-stack": "#85CDCA",
+  "interaction-design": "#C3AED6"
+};
+
+// Build cluster lookups
+const nodeCluster = {};
+const clusterLabels = {};
+graphData.clusters.forEach(c => {
+  clusterLabels[c.id] = c.label;
+  c.nodes.forEach(nid => { if (!nodeCluster[nid]) nodeCluster[nid] = c.id; });
+});
+
+function getColor(id) {
+  return clusterColors[nodeCluster[id]] || "#888888";
+}
+
+// ============ COMPUTE NODE DATES (for Z axis) ============
+// For each node: use createdAt if available, else earliest edge lastSeen
+const nodeEarliestEdge = {};
+graphData.edges.forEach(e => {
+  if (!e.lastSeen) return;
+  [e.from, e.to].forEach(nid => {
+    if (!nodeEarliestEdge[nid] || e.lastSeen < nodeEarliestEdge[nid]) {
+      nodeEarliestEdge[nid] = e.lastSeen;
+    }
+  });
+});
+
+const nodeDate = {};
+Object.keys(graphData.nodes).forEach(id => {
+  const n = graphData.nodes[id];
+  nodeDate[id] = n.createdAt || nodeEarliestEdge[id] || "2026-01-01";
+});
+
+// Date → Z mapping
+const allDates = Object.values(nodeDate);
+const minDate = new Date(Math.min(...allDates.map(d => new Date(d))));
+const maxDate = new Date(Math.max(...allDates.map(d => new Date(d))));
+const dateRange = maxDate - minDate || 1;
+const Z_SPAN = 120; // total Z height
+
+function dateToZ(dateStr) {
+  const d = new Date(dateStr);
+  return ((d - minDate) / dateRange) * Z_SPAN - Z_SPAN / 2;
+}
+
+// ============ COMPUTE ACTIVITY (edge count with distinct dates) ============
+const nodeActivity = {};
+Object.keys(graphData.nodes).forEach(id => { nodeActivity[id] = new Set(); });
+graphData.edges.forEach(e => {
+  if (e.lastSeen) {
+    if (nodeActivity[e.from]) nodeActivity[e.from].add(e.lastSeen);
+    if (nodeActivity[e.to]) nodeActivity[e.to].add(e.lastSeen);
+  }
+});
+const maxActivity = Math.max(...Object.values(nodeActivity).map(s => s.size), 1);
+
+// ============ D3-FORCE LAYOUT (X/Y only) ============
+// Inline minimal force simulation — no d3 dependency needed for this
+const nodeIds = Object.keys(graphData.nodes);
+const nodeIndex = {};
+nodeIds.forEach((id, i) => { nodeIndex[id] = i; });
+
+// Initialize positions
+const positions = nodeIds.map(() => ({
+  x: (Math.random() - 0.5) * 200,
+  y: (Math.random() - 0.5) * 200,
+  vx: 0, vy: 0
+}));
+
+// Cluster centers for initial seeding
+const clusterCenters = {};
+graphData.clusters.forEach((c, i) => {
+  const angle = (i / graphData.clusters.length) * Math.PI * 2;
+  clusterCenters[c.id] = { x: Math.cos(angle) * 60, y: Math.sin(angle) * 60 };
+});
+
+// Seed clustered nodes near their cluster center
+nodeIds.forEach((id, i) => {
+  const cid = nodeCluster[id];
+  if (cid && clusterCenters[cid]) {
+    positions[i].x = clusterCenters[cid].x + (Math.random() - 0.5) * 30;
+    positions[i].y = clusterCenters[cid].y + (Math.random() - 0.5) * 30;
+  }
+});
+
+// Simple force simulation
+const edges = graphData.edges.map(e => ({
+  source: nodeIndex[e.from],
+  target: nodeIndex[e.to],
+  w: e.w || 1
+})).filter(e => e.source !== undefined && e.target !== undefined);
+
+function simulate(iterations) {
+  const alpha0 = 1, alphaDecay = 1 - Math.pow(0.001, 1 / iterations);
+  let alpha = alpha0;
+
+  for (let iter = 0; iter < iterations; iter++) {
+    // Repulsion (charge)
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        let dx = positions[j].x - positions[i].x;
+        let dy = positions[j].y - positions[i].y;
+        let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        let force = -300 * alpha / (dist * dist);
+        let fx = (dx / dist) * force;
+        let fy = (dy / dist) * force;
+        positions[i].vx -= fx;
+        positions[i].vy -= fy;
+        positions[j].vx += fx;
+        positions[j].vy += fy;
+      }
+    }
+
+    // Link attraction
+    edges.forEach(e => {
+      let dx = positions[e.target].x - positions[e.source].x;
+      let dy = positions[e.target].y - positions[e.source].y;
+      let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      let strength = 0.03 * Math.min(e.w, 5) * alpha;
+      let targetDist = 15;
+      let force = (dist - targetDist) * strength;
+      let fx = (dx / dist) * force;
+      let fy = (dy / dist) * force;
+      positions[e.source].vx += fx;
+      positions[e.source].vy += fy;
+      positions[e.target].vx -= fx;
+      positions[e.target].vy -= fy;
+    });
+
+    // Cluster attraction
+    nodeIds.forEach((id, i) => {
+      const cid = nodeCluster[id];
+      if (cid && clusterCenters[cid]) {
+        const cx = clusterCenters[cid].x;
+        const cy = clusterCenters[cid].y;
+        positions[i].vx += (cx - positions[i].x) * 0.005 * alpha;
+        positions[i].vy += (cy - positions[i].y) * 0.005 * alpha;
+      }
+    });
+
+    // Center gravity
+    positions.forEach(p => {
+      p.vx -= p.x * 0.001 * alpha;
+      p.vy -= p.y * 0.001 * alpha;
+    });
+
+    // Apply velocity with damping
+    positions.forEach(p => {
+      p.vx *= 0.6;
+      p.vy *= 0.6;
+      p.x += p.vx;
+      p.y += p.vy;
+    });
+
+    alpha *= (1 - alphaDecay);
+  }
+}
+
+console.time('force-layout');
+simulate(300);
+console.timeEnd('force-layout');
+
+// ============ THREE.JS SCENE ============
+const W = window.innerWidth, H = window.innerHeight;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a0f);
+scene.fog = new THREE.FogExp2(0x0a0a0f, 0.003);
+
+const camera = new THREE.PerspectiveCamera(60, W / H, 0.1, 1000);
+camera.position.set(80, 60, 120);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 20;
+controls.maxDistance = 400;
+
+// ============ POST-PROCESSING (Bloom) ============
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(W, H), 0.8, 0.4, 0.85
+);
+composer.addPass(bloomPass);
+
+// ============ NODES (InstancedMesh) ============
+const NODE_COUNT = nodeIds.length;
+const sphereGeo = new THREE.SphereGeometry(1, 16, 12);
+const sphereMat = new THREE.MeshStandardMaterial({
+  roughness: 0.3, metalness: 0.1, emissiveIntensity: 0.6
+});
+const instancedNodes = new THREE.InstancedMesh(sphereGeo, sphereMat, NODE_COUNT);
+instancedNodes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+const dummy = new THREE.Object3D();
+const nodePositions3D = []; // store for raycasting & edges
+const baseEmissive = []; // store base emissive colors
+
+nodeIds.forEach((id, i) => {
+  const x = positions[i].x;
+  const y = positions[i].y;
+  const z = dateToZ(nodeDate[id]);
+  const activity = nodeActivity[id].size / maxActivity;
+  const radius = 0.6 + activity * 1.2 + (graphData.nodes[id].imp || 1) * 0.15;
+
+  dummy.position.set(x, z, y); // Y-up = time axis
+  dummy.scale.setScalar(radius);
+  dummy.updateMatrix();
+  instancedNodes.setMatrixAt(i, dummy.matrix);
+
+  const color = new THREE.Color(getColor(id));
+  instancedNodes.setColorAt(i, color);
+
+  nodePositions3D.push({ x, y: z, z: y, id, radius });
+  baseEmissive.push(color.clone().multiplyScalar(0.4 + activity * 0.6));
+});
+
+instancedNodes.instanceMatrix.needsUpdate = true;
+instancedNodes.instanceColor.needsUpdate = true;
+scene.add(instancedNodes);
+
+// ============ EDGES (BufferGeometry Lines) ============
+const edgePositions = [];
+const edgeColors = [];
+
+graphData.edges.forEach(e => {
+  const si = nodeIndex[e.from];
+  const ti = nodeIndex[e.to];
+  if (si === undefined || ti === undefined) return;
+
+  const s = nodePositions3D[si];
+  const t = nodePositions3D[ti];
+
+  edgePositions.push(s.x, s.y, s.z, t.x, t.y, t.z);
+
+  const c1 = new THREE.Color(getColor(e.from));
+  const c2 = new THREE.Color(getColor(e.to));
+  const alpha = Math.min((e.w || 1) / 10, 1) * 0.4 + 0.1;
+  c1.multiplyScalar(alpha);
+  c2.multiplyScalar(alpha);
+  edgeColors.push(c1.r, c1.g, c1.b, c2.r, c2.g, c2.b);
+});
+
+const edgeGeo = new THREE.BufferGeometry();
+edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edgePositions, 3));
+edgeGeo.setAttribute('color', new THREE.Float32BufferAttribute(edgeColors, 3));
+const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6 });
+const edgeMesh = new THREE.LineSegments(edgeGeo, edgeMat);
+scene.add(edgeMesh);
+
+// ============ LIGHTS ============
+scene.add(new THREE.AmbientLight(0x404060, 0.8));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+dirLight.position.set(50, 100, 50);
+scene.add(dirLight);
+const pointLight = new THREE.PointLight(0x4488ff, 0.4, 300);
+pointLight.position.set(0, 60, 0);
+scene.add(pointLight);
+
+// ============ TIME AXIS HELPER ============
+// Vertical line + date labels
+const axisGeo = new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(-110, -Z_SPAN/2, -110),
+  new THREE.Vector3(-110, Z_SPAN/2, -110)
+]);
+const axisMat = new THREE.LineBasicMaterial({ color: 0x333344 });
+scene.add(new THREE.Line(axisGeo, axisMat));
+
+// ============ RAYCASTING & INTERACTION ============
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const tooltip = document.getElementById('tooltip');
+let hoveredIndex = -1;
+
+// Spread activation state
+const spreadState = {}; // nodeId → { active, intensity, time }
+const spreadAdj = {};
+nodeIds.forEach(id => { spreadAdj[id] = []; });
+graphData.edges.forEach(e => {
+  if (spreadAdj[e.from]) spreadAdj[e.from].push({ to: e.to, w: e.w || 1 });
+  if (spreadAdj[e.to]) spreadAdj[e.to].push({ to: e.from, w: e.w || 1 });
+});
+
+function triggerSpread(startId) {
+  // Reset
+  Object.keys(spreadState).forEach(k => delete spreadState[k]);
+  spreadState[startId] = { intensity: 1.0, time: 0 };
+
+  let frontier = [startId];
+  let depth = 0;
+  const visited = new Set([startId]);
+
+  function wave() {
+    if (depth > 5 || frontier.length === 0) return;
+    depth++;
+    const next = [];
+    frontier.forEach(nid => {
+      (spreadAdj[nid] || []).forEach(({ to, w }) => {
+        if (!visited.has(to)) {
+          visited.add(to);
+          const decay = Math.pow(0.5, depth);
+          spreadState[to] = { intensity: decay, time: depth * 150 };
+          next.push(to);
+        }
+      });
+    });
+    frontier = next;
+    setTimeout(wave, 150);
+  }
+  wave();
+}
+
+renderer.domElement.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / W) * 2 - 1;
+  mouse.y = -(e.clientY / H) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObject(instancedNodes);
+
+  if (intersects.length > 0) {
+    const idx = intersects[0].instanceId;
+    hoveredIndex = idx;
+    const id = nodeIds[idx];
+    const n = graphData.nodes[id];
+    const cid = nodeCluster[id];
+
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top = (e.clientY + 14) + 'px';
+    tooltip.querySelector('.tt-id').textContent = id;
+    tooltip.querySelector('.tt-type').textContent = n.type || '';
+    tooltip.querySelector('.tt-cluster').textContent = cid ? clusterLabels[cid] || cid : '未分类';
+    tooltip.querySelector('.tt-cluster').style.color = getColor(id);
+    tooltip.querySelector('.tt-date').textContent = nodeDate[id];
+    renderer.domElement.style.cursor = 'pointer';
+  } else {
+    hoveredIndex = -1;
+    tooltip.style.display = 'none';
+    renderer.domElement.style.cursor = 'default';
+  }
+});
+
+renderer.domElement.addEventListener('click', () => {
+  if (hoveredIndex >= 0) {
+    triggerSpread(nodeIds[hoveredIndex]);
+  }
+});
+
+// ============ LEGEND ============
+const legendEl = document.getElementById('legend');
+graphData.clusters.forEach(c => {
+  const item = document.createElement('div');
+  item.className = 'item';
+  item.innerHTML = `<span class="dot" style="background:${clusterColors[c.id] || '#888'}"></span>${c.label}`;
+  legendEl.appendChild(item);
+});
+
+// ============ VIEW PRESETS ============
+function animateCamera(target, lookAt, duration = 800) {
+  const start = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+  const startTarget = controls.target.clone();
+  const t0 = performance.now();
+
+  function step(now) {
+    const t = Math.min((now - t0) / duration, 1);
+    const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    camera.position.set(
+      start.x + (target.x - start.x) * ease,
+      start.y + (target.y - start.y) * ease,
+      start.z + (target.z - start.z) * ease
+    );
+    controls.target.set(
+      startTarget.x + (lookAt.x - startTarget.x) * ease,
+      startTarget.y + (lookAt.y - startTarget.y) * ease,
+      startTarget.z + (lookAt.z - startTarget.z) * ease
+    );
+    controls.update();
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+window.viewTop = () => animateCamera({ x: 0, y: 200, z: 0 }, { x: 0, y: 0, z: 0 });
+window.viewSide = () => animateCamera({ x: 200, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
+window.viewAngle = () => animateCamera({ x: 80, y: 60, z: 120 }, { x: 0, y: 0, z: 0 });
+
+// ============ ANIMATION LOOP ============
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  const time = clock.getElapsedTime();
+
+  // Update node emissive based on spread activation
+  nodeIds.forEach((id, i) => {
+    const spread = spreadState[id];
+    let emissiveScale = 0.3;
+
+    if (spread) {
+      const elapsed = time * 1000;
+      const fadeIn = Math.max(0, Math.min(1, (elapsed - spread.time) / 200));
+      const fadeOut = Math.max(0, 1 - (elapsed - spread.time - 200) / 2000);
+      emissiveScale = 0.3 + spread.intensity * fadeIn * Math.max(fadeOut, 0) * 2.0;
+    }
+
+    if (i === hoveredIndex) {
+      emissiveScale = Math.max(emissiveScale, 1.5);
+    }
+
+    // Subtle breathing for all nodes
+    const breath = 1 + Math.sin(time * 2 + i * 0.3) * 0.05;
+    const color = new THREE.Color(getColor(id));
+    instancedNodes.setColorAt(i, color.multiplyScalar(breath * (0.5 + emissiveScale * 0.5)));
+  });
+  instancedNodes.instanceColor.needsUpdate = true;
+
+  composer.render();
+}
+
+animate();
+
+// ============ RESIZE ============
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+
+</script>
+</body>
+</html>
