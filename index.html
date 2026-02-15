@@ -273,11 +273,11 @@ particleLinks.forEach(l => {
   }
 });
 
-// Create particle elements — no glow filter for performance
+// Create particle elements — hidden for now
 const particleEls = particleG.selectAll("circle").data(particles).join("circle")
   .attr("r", 1.5)
   .attr("fill", d => getColor(d.link.source.id || d.link.source))
-  .attr("fill-opacity", 0.6);
+  .attr("fill-opacity", 0);
 
 // Keep old pulse dots for strongest links
 const strongLinks = links.filter(l => l.weight >= 5);
@@ -297,8 +297,7 @@ nodes.forEach(n => {
 const sim = d3.forceSimulation(nodes)
   .force("link", d3.forceLink(links).id(d => d.id).distance(d => 80 / Math.sqrt(d.weight || 1)).strength(d => 0.3 * Math.sqrt(d.weight || 1)))
   .force("charge", d3.forceManyBody().strength(d => -100 - degree[d.id] * 6).distanceMax(500))
-  .force("centerX", d3.forceX(W / 2).strength(0.02))
-  .force("centerY", d3.forceY(H / 2).strength(0.02))
+  .force("center", d3.forceCenter(W / 2, H / 2).strength(0.02))
   .force("collision", d3.forceCollide().radius(d => rScale(degree[d.id]||1) + 10))
   .force("gravity", d3.forceRadial(0, W/2, H/2).strength(d => degree[d.id] <= 1 ? 0.04 : 0))
   // cluster attraction: same-cluster nodes pull together
@@ -424,24 +423,24 @@ nodeEls.on("click", (e, d) => {
   const maxAct = Math.max(...Object.values(act));
 
   // Animate: first dim everything, then light up in waves
-  nodeEls.transition().duration(200)
+  nodeEls.transition("spread-dim").duration(200)
     .attr("fill-opacity", 0.03);
-  linkEls.transition().duration(200)
+  linkEls.transition("spread-dim").duration(200)
     .attr("stroke-opacity", 0.02);
-  labelEls.transition().duration(200)
+  labelEls.transition("spread-dim").duration(200)
     .attr("fill-opacity", 0.03);
-  particleEls.transition().duration(200)
+  particleEls.transition("spread-dim").duration(200)
     .attr("fill-opacity", 0);
 
   // Light up activated nodes with delay based on "distance" (inverse activation)
   Object.entries(act).forEach(([nid, energy]) => {
     const norm = energy / maxAct;
-    const delay = (1 - norm) * 800; // stronger = sooner
+    const delay = 250 + (1 - norm) * 800; // 250ms wait for dim to finish, then stronger = sooner
     nodeEls.filter(n => n.id === nid)
-      .transition().delay(delay).duration(400)
+      .transition("spread-light").delay(delay).duration(400)
       .attr("fill-opacity", 0.3 + norm * 0.7);
     labelEls.filter(n => n.id === nid)
-      .transition().delay(delay).duration(400)
+      .transition("spread-light").delay(delay).duration(400)
       .attr("fill-opacity", 0.3 + norm * 0.7)
       .attr("fill", getColor(nid));
   });
@@ -449,7 +448,7 @@ nodeEls.on("click", (e, d) => {
   // Light up edges between activated nodes + their particles
   const actSet = new Set(Object.keys(act));
   linkEls.filter(l => actSet.has(l.source.id) && actSet.has(l.target.id))
-    .transition().delay(300).duration(500)
+    .transition("spread-light").delay(500).duration(500)
     .attr("stroke-opacity", l => {
       const e = Math.min(act[l.source.id]||0, act[l.target.id]||0) / maxAct;
       return 0.2 + e * 0.7;
@@ -521,8 +520,7 @@ document.getElementById("stats").textContent = `${nodes.length} nodes · ${links
 window.addEventListener("resize", () => {
   const w = window.innerWidth, h = window.innerHeight;
   svg.attr("width", w).attr("height", h);
-  sim.force("centerX", d3.forceX(w / 2).strength(0.05))
-     .force("centerY", d3.forceY(h / 2).strength(0.05))
+  sim.force("center", d3.forceCenter(w / 2, h / 2))
      .alpha(0.1).restart();
 });
 
