@@ -299,10 +299,97 @@ nodeEls.on("mouseenter", (e, d) => {
   tooltip.style("left", (e.clientX + 14) + "px").style("top", (e.clientY - 10) + "px");
 })
 .on("mouseleave", () => {
-  nodeEls.attr("fill-opacity", 0.85).attr("stroke-opacity", 0.5);
-  linkEls.attr("stroke-opacity", 0.4).attr("stroke", "#333");
-  labelEls.attr("fill-opacity", 0.7);
+  if (!spreadActive) {
+    nodeEls.attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5).attr("stroke-opacity", 0.5);
+    linkEls.attr("stroke-opacity", d => 0.25 + Math.min((d.weight||1) / 10, 1) * 0.65);
+    labelEls.attr("fill-opacity", 0.8);
+  }
   tooltip.style("display", "none");
+});
+
+// === SPREAD ACTIVATION (click to fire) ===
+let spreadActive = false;
+
+// Build weighted adjacency for spread
+const spreadAdj = {};
+Object.keys(graphData.nodes).forEach(id => { spreadAdj[id] = []; });
+graphData.edges.forEach(e => {
+  const ew = e.w * (e.imp || 1);
+  if (!spreadAdj[e.from]) spreadAdj[e.from] = [];
+  if (!spreadAdj[e.to]) spreadAdj[e.to] = [];
+  spreadAdj[e.from].push({ target: e.to, w: ew });
+  spreadAdj[e.to].push({ target: e.from, w: ew });
+});
+
+function spreadActivation(seed, maxDepth=3, decay=0.5, threshold=0.1) {
+  const act = {}; act[seed] = 1.0;
+  const queue = [{ id: seed, energy: 1.0, depth: 0 }];
+  while (queue.length) {
+    const { id, energy, depth } = queue.shift();
+    if (depth >= maxDepth) continue;
+    const nb = spreadAdj[id] || [];
+    const maxW = Math.max(...nb.map(n => n.w), 1);
+    for (const n of nb) {
+      const t = energy * (n.w / maxW) * decay;
+      if (t < 0.005) continue;
+      act[n.target] = (act[n.target] || 0) + t;
+      if (t >= threshold * 0.3) queue.push({ id: n.target, energy: t, depth: depth + 1 });
+    }
+  }
+  return act;
+}
+
+// Animated spread on click
+nodeEls.on("click", (e, d) => {
+  e.stopPropagation();
+  spreadActive = true;
+  const act = spreadActivation(d.id);
+  const maxAct = Math.max(...Object.values(act));
+
+  // Animate: first dim everything, then light up in waves
+  nodeEls.transition().duration(200)
+    .attr("fill-opacity", 0.03).attr("stroke-opacity", 0.02);
+  linkEls.transition().duration(200)
+    .attr("stroke-opacity", 0.02);
+  labelEls.transition().duration(200)
+    .attr("fill-opacity", 0.03);
+
+  // Light up activated nodes with delay based on "distance" (inverse activation)
+  Object.entries(act).forEach(([nid, energy]) => {
+    const norm = energy / maxAct;
+    const delay = (1 - norm) * 800; // stronger = sooner
+    nodeEls.filter(n => n.id === nid)
+      .transition().delay(delay).duration(400)
+      .attr("fill-opacity", 0.3 + norm * 0.7)
+      .attr("stroke-opacity", 0.3 + norm * 0.7)
+      .attr("stroke-width", 1.5 + norm * 3);
+    labelEls.filter(n => n.id === nid)
+      .transition().delay(delay).duration(400)
+      .attr("fill-opacity", 0.3 + norm * 0.7)
+      .attr("fill", norm > 0.3 ? "#fff" : "#ccc");
+  });
+
+  // Light up edges between activated nodes
+  const actSet = new Set(Object.keys(act));
+  linkEls.filter(l => actSet.has(l.source.id) && actSet.has(l.target.id))
+    .transition().delay(300).duration(500)
+    .attr("stroke-opacity", l => {
+      const e = Math.min(act[l.source.id]||0, act[l.target.id]||0) / maxAct;
+      return 0.2 + e * 0.7;
+    });
+});
+
+// Click background to reset
+svg.on("click", () => {
+  if (!spreadActive) return;
+  spreadActive = false;
+  nodeEls.transition().duration(400)
+    .attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5)
+    .attr("stroke-opacity", 0.5).attr("stroke-width", 1.5);
+  linkEls.transition().duration(400)
+    .attr("stroke-opacity", d => 0.25 + Math.min((d.weight||1) / 10, 1) * 0.65);
+  labelEls.transition().duration(400)
+    .attr("fill-opacity", 0.8).attr("fill", "#ccc");
 });
 
 // === HOVER: EDGE ===
