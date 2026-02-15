@@ -415,47 +415,62 @@ function spreadActivation(seed, maxDepth=3, decay=0.5, threshold=0.1) {
   return act;
 }
 
-// Animated spread on click
+// Animated spread on click — wave propagation along edges
 nodeEls.on("click", (e, d) => {
   e.stopPropagation();
   spreadActive = true;
   const act = spreadActivation(d.id);
   const maxAct = Math.max(...Object.values(act));
 
-  // Animate: first dim everything, then light up in waves
-  nodeEls.transition("spread-dim").duration(200)
-    .attr("fill-opacity", 0.03);
-  linkEls.transition("spread-dim").duration(200)
-    .attr("stroke-opacity", 0.02);
-  labelEls.transition("spread-dim").duration(200)
-    .attr("fill-opacity", 0.03);
-  particleEls.transition("spread-dim").duration(200)
-    .attr("fill-opacity", 0);
+  // BFS to get depth (hop count) from seed for wave timing
+  const depth = {}; depth[d.id] = 0;
+  const bfsQueue = [d.id];
+  const visited = new Set([d.id]);
+  while (bfsQueue.length) {
+    const cur = bfsQueue.shift();
+    const nb = adj[cur] || new Set();
+    nb.forEach(nid => {
+      if (!visited.has(nid) && act[nid]) {
+        visited.add(nid);
+        depth[nid] = depth[cur] + 1;
+        bfsQueue.push(nid);
+      }
+    });
+  }
+  const maxDepth = Math.max(...Object.values(depth), 1);
+  const waveMs = 600; // ms per hop
 
-  // Light up activated nodes with delay based on "distance" (inverse activation)
+  // Dim everything first
+  nodeEls.transition("spread-dim").duration(200).attr("fill-opacity", 0.03);
+  linkEls.transition("spread-dim").duration(200).attr("stroke-opacity", 0.02);
+  labelEls.transition("spread-dim").duration(200).attr("fill-opacity", 0.03);
+
+  // Wave: light up nodes by depth
   Object.entries(act).forEach(([nid, energy]) => {
     const norm = energy / maxAct;
-    const delay = 250 + (1 - norm) * 800; // 250ms wait for dim to finish, then stronger = sooner
+    const hop = depth[nid] || 0;
+    const delay = 250 + hop * waveMs;
     nodeEls.filter(n => n.id === nid)
-      .transition("spread-light").delay(delay).duration(400)
+      .transition("spread-light").delay(delay).duration(350)
       .attr("fill-opacity", 0.3 + norm * 0.7);
     labelEls.filter(n => n.id === nid)
-      .transition("spread-light").delay(delay).duration(400)
+      .transition("spread-light").delay(delay).duration(350)
       .attr("fill-opacity", 0.3 + norm * 0.7)
       .attr("fill", getColor(nid));
   });
 
-  // Light up edges between activated nodes + their particles
+  // Wave: light up edges when both endpoints are lit (use later endpoint's depth)
   const actSet = new Set(Object.keys(act));
   linkEls.filter(l => actSet.has(l.source.id) && actSet.has(l.target.id))
-    .transition("spread-light").delay(500).duration(500)
-    .attr("stroke-opacity", l => {
-      const e = Math.min(act[l.source.id]||0, act[l.target.id]||0) / maxAct;
-      return 0.2 + e * 0.7;
+    .each(function(l) {
+      const srcDepth = depth[l.source.id] || 0;
+      const tgtDepth = depth[l.target.id] || 0;
+      const edgeHop = Math.min(srcDepth, tgtDepth);
+      const delay = 250 + edgeHop * waveMs + waveMs * 0.3; // slightly after the node
+      const en = Math.min(act[l.source.id]||0, act[l.target.id]||0) / maxAct;
+      d3.select(this).transition("spread-light").delay(delay).duration(350)
+        .attr("stroke-opacity", 0.2 + en * 0.7);
     });
-  particleEls.filter(p => actSet.has(p.link.source.id) && actSet.has(p.link.target.id))
-    .transition().delay(400).duration(500)
-    .attr("fill-opacity", 0.6);
 });
 
 // Click background to reset
