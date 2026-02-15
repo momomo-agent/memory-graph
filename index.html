@@ -290,10 +290,17 @@ const pulseEls = pulseG.selectAll("circle").data(strongLinks).join("circle")
   .attr("fill-opacity", 0.8)
   .style("filter", "url(#glow2)");
 
+// Initialize node positions near center to prevent drift
+nodes.forEach(n => {
+  n.x = W/2 + (Math.random() - 0.5) * 200;
+  n.y = H/2 + (Math.random() - 0.5) * 200;
+});
+
 const sim = d3.forceSimulation(nodes)
   .force("link", d3.forceLink(links).id(d => d.id).distance(d => 80 / Math.sqrt(d.weight || 1)).strength(d => 0.3 * Math.sqrt(d.weight || 1)))
   .force("charge", d3.forceManyBody().strength(d => -100 - degree[d.id] * 6).distanceMax(500))
-  .force("center", d3.forceCenter(W / 2, H / 2).strength(0.02))
+  .force("centerX", d3.forceX(W / 2).strength(0.05))
+  .force("centerY", d3.forceY(H / 2).strength(0.05))
   .force("collision", d3.forceCollide().radius(d => rScale(degree[d.id]||1) + 10))
   .force("gravity", d3.forceRadial(0, W/2, H/2).strength(d => degree[d.id] <= 1 ? 0.04 : 0))
   // cluster attraction: same-cluster nodes pull together
@@ -509,7 +516,9 @@ document.getElementById("stats").textContent = `${nodes.length} nodes · ${links
 window.addEventListener("resize", () => {
   const w = window.innerWidth, h = window.innerHeight;
   svg.attr("width", w).attr("height", h);
-  sim.force("center", d3.forceCenter(w / 2, h / 2)).alpha(0.1).restart();
+  sim.force("centerX", d3.forceX(w / 2).strength(0.05))
+     .force("centerY", d3.forceY(h / 2).strength(0.05))
+     .alpha(0.1).restart();
 });
 
 // === BREATHING + PARTICLE FLOW ANIMATION ===
