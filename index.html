@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Momo Memory Graph</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0a; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+svg { display: block; }
+#search {
+  position: fixed; top: 16px; left: 16px; z-index: 10;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px; padding: 8px 14px; color: #ccc; font-size: 13px;
+  width: 220px; outline: none; backdrop-filter: blur(8px);
+}
+#search::placeholder { color: #555; }
+#search:focus { border-color: rgba(255,255,255,0.3); }
+#tooltip {
+  position: fixed; pointer-events: none; z-index: 20;
+  background: rgba(20,20,20,0.92); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px; padding: 10px 14px; color: #ddd; font-size: 12px;
+  line-height: 1.6; backdrop-filter: blur(12px); display: none; max-width: 280px;
+}
+#tooltip .tt-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+#tooltip .tt-type { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+#tooltip .tt-meta { color: #999; font-size: 11px; margin-top: 4px; }
+#legend {
+  position: fixed; bottom: 16px; left: 16px; z-index: 10;
+  background: rgba(20,20,20,0.7); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 12px 16px; backdrop-filter: blur(8px);
+  font-size: 11px; color: #888;
+}
+#legend .item { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+#legend .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+#stats {
+  position: fixed; top: 16px; right: 16px; z-index: 10;
+  color: #444; font-size: 11px; text-align: right;
+}
+#controls {
+  position: fixed; bottom: 16px; right: 16px; z-index: 10;
+  color: #444; font-size: 11px; text-align: right; line-height: 1.8;
+}
+#controls kbd {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 3px; padding: 1px 5px; font-family: inherit; font-size: 10px;
+}
+</style>
+</head>
+<body>
+<input id="search" type="text" placeholder="搜索节点..." autocomplete="off" spellcheck="false">
+<div id="tooltip"></div>
+<div id="legend"></div>
+<div id="stats"></div>
+<div id="controls">
+  <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 平移<br>
+  <kbd>+</kbd><kbd>-</kbd> 缩放<br>
+  滚轮缩放 · 拖拽节点
+</div>
+<svg id="graph"></svg>
+
+<script>
+// === DATA ===
+const graphData = {"version":1,"updatedAt":"2026-02-15","nodes":{"braindown":{"type":"project","file":"projects/braindown.md","local":"/Users/kenefe/LOCAL/momo-agent/BrainDown/","github":"momomo-agent/braindown","deploy":null,"status":"active"},"jotjot":{"type":"project","file":"projects/jotjot.md","local":"/Users/kenefe/LOCAL/momo-agent/JotJot/","github":"momomo-agent/jotjot","deploy":"https://momomo-agent.github.io/jotjot/ota/","status":"active"},"intera":{"type":"project","file":"projects/intera.md","local":null,"github":"kenefe/Intera","deploy":null,"status":"active"},"liquidwindow":{"type":"project","file":"projects/liquidwindow.md","local":"/Users/kenefe/LOCAL/momo-agent/LiquidWindow/","github":null,"deploy":null,"status":"active"},"toumo":{"type":"project","file":"projects/toumo.md","local":"/Users/kenefe/LOCAL/momo-agent/toumo/","github":"momomo-agent/toumo","deploy":"https://momomo-agent.github.io/toumo/","status":"active"},"molttalk":{"type":"project","file":"projects/molttalk.md","local":"/Users/kenefe/LOCAL/momo-agent/molttalk/","github":null,"deploy":"https://molttalk.site","status":"active"},"daily-brief":{"type":"project","file":"projects/daily-brief.md","local":"/Users/kenefe/LOCAL/momo-agent/daily-brief/","github":"momomo-agent/daily-brief","deploy":"https://momomo-agent.github.io/daily-brief/","status":"active"},"kenefe":{"type":"person","file":"people/kenefe.md","relation":"my human","context":"创造者和合作伙伴"},"typography":{"type":"concept","file":"lessons/ui-typography.md"},"gestalt":{"type":"concept","file":"lessons/ui-typography.md"},"thetype":{"type":"concept","file":"lessons/ui-typography.md"},"refactoring-ui":{"type":"concept","file":"lessons/refactoring-ui-notes.md"},"craft":{"type":"reference","file":null},"bear":{"type":"reference","file":null},"notion":{"type":"reference","file":null},"taste":{"type":"concept","file":null},"density":{"type":"concept","file":null},"spacing-system":{"type":"concept","file":null},"proximity":{"type":"concept","file":null},"dev-methodology":{"type":"concept","file":"lessons/agent-engineering.md"},"mvp":{"type":"concept","file":null},"dbb":{"type":"concept","file":null},"self-verify":{"type":"concept","file":null},"feature-json":{"type":"concept","file":null},"vision-md":{"type":"concept","file":null},"nstextview":{"type":"concept","file":"lessons/dev-workflow.md"},"highlightr":{"type":"concept","file":null},"nstexttable":{"type":"concept","file":null},"block-bg-layout":{"type":"concept","file":null},"codesign":{"type":"concept","file":"lessons/dev-workflow.md"},"notarize":{"type":"concept","file":"lessons/dev-workflow.md"},"xcodegen":{"type":"concept","file":"lessons/dev-workflow.md"},"browser-control":{"type":"tool","file":"lessons/tools-infra.md","path":"/Users/kenefe/LOCAL/momo-agent/browser-control.js","command":"node browser-control.js snapshot <url>","needs_proxy":false,"notes":"kenefe 明确要求用这个上网"},"web-search-mcp":{"type":"tool","file":"lessons/tools-infra.md","path":"/Users/kenefe/LOCAL/momo-agent/web-search-mcp/","command":"echo JSON | node dist/index.js","needs_proxy":false,"notes":"免费本地搜索"},"whisper":{"type":"tool","file":"lessons/tools-infra.md","path":"/Users/kenefe/LOCAL/momo-agent/scripts/voice_transcribe.sh","command":"voice_transcribe.sh <file> [lang]","needs_proxy":false,"notes":"语言要匹配内容"},"notion-api":{"type":"tool","file":"lessons/tools-infra.md","path":null,"command":"curl -x http://127.0.0.1:7890 https://api.notion.com/v1/...","needs_proxy":true,"notes":"用 curl --retry 3，不用 Python urllib"},"x-tweet-fetcher":{"type":"tool","file":"lessons/tools-infra.md","path":"/Users/kenefe/LOCAL/momo-agent/x-tweet-fetcher/scripts/fetch_tweet.py","command":"HTTPS_PROXY=http://127.0.0.1:7890 python3 fetch_tweet.py --url <url>","needs_proxy":true,"notes":"FxTwitter API，中国需代理"},"memory-system":{"type":"concept","file":null},"graph-memory":{"type":"concept","file":null},"harper-reed":{"type":"person","file":null,"relation":"reference","context":"LLM codegen workflow 作者 (spec→plan→execute)"},"anthropic-harness":{"type":"reference","file":"lessons/agent-engineering.md"},"openai-harness":{"type":"reference","file":"lessons/agent-engineering.md"},"ray-wang":{"type":"person","file":null,"relation":"reference","context":"OpenClaw 记忆系统实战文章作者"},"swiftui":{"type":"concept","file":null},"georgia-serif":{"type":"concept","file":null},"folme":{"type":"concept","file":null},"spring-animation":{"type":"concept","file":null},"variable-manager":{"type":"concept","file":null},"patch-runtime":{"type":"concept","file":null},"toggle-condition":{"type":"concept","file":null},"playwright-bdd":{"type":"tool","file":null},"display-state":{"type":"concept","file":null},"smart-animate":{"type":"concept","file":null},"generative-ui":{"type":"concept","file":null},"mercury-os":{"type":"reference","file":null},"telepath":{"type":"reference","file":null},"desktop-neo":{"type":"reference","file":null},"ai-native-interface":{"type":"concept","file":null},"intent-driven-os":{"type":"concept","file":null},"agent-engineering":{"type":"concept","file":"lessons/agent-engineering.md"},"codex":{"type":"tool","file":null},"cursor-scaling":{"type":"reference","file":null},"multi-agent":{"type":"concept","file":null},"context-engineering":{"type":"concept","file":null},"agent-memory":{"type":"concept","file":null},"progress-file":{"type":"concept","file":null},"agent-legibility":{"type":"concept","file":null},"agents-md":{"type":"concept","file":null},"barry-zhang":{"type":"person","file":null},"dario-amodei":{"type":"person","file":null},"openviking":{"type":"tool","file":null},"openclaw":{"type":"reference","file":null},"soul-md":{"type":"concept","file":null},"ai-scarcity":{"type":"concept","file":null},"jobs-1983":{"type":"reference","file":null},"cobalt":{"type":"tool","file":null},"schematic":{"type":"tool","file":null},"ghidra-mcp":{"type":"tool","file":null},"scratch-app":{"type":"tool","file":null},"markdown-for-agents":{"type":"concept","file":null},"cloudflare":{"type":"reference","file":null},"moltbook":{"type":"reference","file":null},"agent-browser":{"type":"tool","file":null},"beautiful-mermaid":{"type":"tool","file":null},"shader-graph":{"type":"concept","file":null},"webgpu":{"type":"concept","file":null},"making-software":{"type":"reference","file":null},"userinterface-wiki":{"type":"reference","file":null},"cosmos-ai-os":{"type":"reference","file":null},"mind-palace":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/mind-palace/","github":null,"deploy":null,"status":"active"},"raindrop":{"type":"tool","file":null},"slidejot":{"type":"project","file":"projects/slidejot.md","local":"/Users/kenefe/LOCAL/momo-agent/SlideJot-iOS/","github":null,"deploy":null,"status":"paused"},"momo-dashboard":{"type":"project","file":"projects/momo-dashboard.md","local":"/Users/kenefe/LOCAL/momo-agent/momo-website/","github":"momomo-agent/momo-dashboard","deploy":"https://momomo-agent.github.io/momo-dashboard/","status":"active"},"lottie":{"type":"concept","file":null},"figma-plugin":{"type":"tool","file":null},"agent-os":{"type":"concept","file":null},"siggraph":{"type":"concept","file":null},"ios-app-switcher":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/ios-app-switcher/","github":"momomo-agent/ios-app-switcher","deploy":"https://momomo-agent.github.io/ios-app-switcher/","status":"archived"},"webgpu-3dgs":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/webgpu-3dgs/","github":"momomo-agent/webgpu-3dgs","deploy":"https://momomo-agent.github.io/webgpu-3dgs/","status":"archived"},"upstash-redis":{"type":"tool","file":null},"vercel":{"type":"tool","file":null},"cloudkit":{"type":"concept","file":null},"new-york-serif":{"type":"concept","file":null},"xiao-longxia":{"type":"person","file":null},"peter-steinberger":{"type":"person","file":null},"github-pages":{"type":"tool","file":null},"developer-id":{"type":"concept","file":"lessons/dev-workflow.md"},"ota-distribution":{"type":"concept","file":"lessons/dev-workflow.md"},"rss":{"type":"concept","file":null},"actibook":{"type":"concept","file":null},"mukoita1":{"type":"reference","file":null},"cursor-rules":{"type":"reference","file":"lessons/kenefe-coding-philosophy.md"},"deep-thinking":{"type":"concept","file":"lessons/kenefe-coding-philosophy.md"},"ia-writer":{"type":"reference","file":null},"typora":{"type":"reference","file":null},"origami":{"type":"reference","file":null},"protopie":{"type":"reference","file":null},"rive":{"type":"reference","file":null},"principle":{"type":"reference","file":null},"theotype-peacock":{"type":"reference","file":"lessons/ui-typography.md"},"mijia":{"type":"tool","file":null},"python-miio":{"type":"tool","file":null},"discord":{"type":"tool","file":null},"ffmpeg":{"type":"tool","file":null},"cat-game":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/cat-game/","github":null,"deploy":null,"status":"unknown"},"cat-game-ios":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/cat-game-ios/","github":null,"deploy":null,"status":"unknown"},"li-family-recipes":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/li-family-recipes-web/","github":null,"deploy":null,"status":"unknown"},"molttalk-ios":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/molttalk-ios/","github":null,"deploy":null,"status":"unknown"},"siggraph-research":{"type":"project","file":null,"local":"/Users/kenefe/LOCAL/momo-agent/siggraph-research/","github":null,"deploy":null,"status":"paused"},"architecture":{"type":"concept","file":null},"sub-agent":{"type":"concept","file":null},"context-management":{"type":"concept","file":null},"methodology":{"type":"concept","file":"lessons/agent-engineering.md"}},"edges":[{"from":"braindown","to":"typography","w":10},{"from":"braindown","to":"gestalt","w":5},{"from":"braindown","to":"thetype","w":4},{"from":"braindown","to":"refactoring-ui","w":4},{"from":"braindown","to":"craft","w":5},{"from":"bear","to":"braindown","w":3},{"from":"braindown","to":"notion","w":2},{"from":"braindown","to":"taste","w":8},{"from":"braindown","to":"density","w":5},{"from":"braindown","to":"spacing-system","w":3},{"from":"braindown","to":"proximity","w":3},{"from":"braindown","to":"nstextview","w":6},{"from":"braindown","to":"highlightr","w":3},{"from":"braindown","to":"nstexttable","w":3},{"from":"block-bg-layout","to":"braindown","w":4},{"from":"braindown","to":"georgia-serif","w":2},{"from":"braindown","to":"codesign","w":5},{"from":"braindown","to":"notarize","w":5},{"from":"braindown","to":"xcodegen","w":4},{"from":"braindown","to":"dev-methodology","w":4},{"from":"braindown","to":"dbb","w":2},{"from":"braindown","to":"self-verify","w":4},{"from":"gestalt","to":"typography","w":5},{"from":"thetype","to":"typography","w":4},{"from":"refactoring-ui","to":"typography","w":3},{"from":"proximity","to":"typography","w":4},{"from":"spacing-system","to":"typography","w":3},{"from":"density","to":"typography","w":3},{"from":"georgia-serif","to":"typography","w":2},{"from":"gestalt","to":"proximity","w":5},{"from":"density","to":"gestalt","w":2},{"from":"kenefe","to":"taste","w":10},{"from":"braindown","to":"kenefe","w":8},{"from":"jotjot","to":"kenefe","w":7},{"from":"intera","to":"kenefe","w":8},{"from":"dev-methodology","to":"kenefe","w":7},{"from":"kenefe","to":"mvp","w":3},{"from":"craft","to":"kenefe","w":3},{"from":"density","to":"kenefe","w":3},{"from":"kenefe","to":"swiftui","w":4},{"from":"dev-methodology","to":"mvp","w":5},{"from":"dbb","to":"dev-methodology","w":4},{"from":"dev-methodology","to":"self-verify","w":4},{"from":"dev-methodology","to":"feature-json","w":3},{"from":"dev-methodology","to":"vision-md","w":3},{"from":"dev-methodology","to":"taste","w":4},{"from":"dev-methodology","to":"harper-reed","w":4},{"from":"anthropic-harness","to":"dev-methodology","w":4},{"from":"dev-methodology","to":"openai-harness","w":5},{"from":"dev-methodology","to":"intera","w":3},{"from":"graph-memory","to":"memory-system","w":4},{"from":"memory-system","to":"ray-wang","w":5},{"from":"dev-methodology","to":"memory-system","w":2},{"from":"jotjot","to":"swiftui","w":6},{"from":"codesign","to":"jotjot","w":3},{"from":"jotjot","to":"notarize","w":3},{"from":"craft","to":"taste","w":4},{"from":"bear","to":"craft","w":2},{"from":"craft","to":"notion","w":2},{"from":"density","to":"taste","w":3},{"from":"taste","to":"typography","w":4},{"from":"dbb","to":"intera","w":2},{"from":"intera","to":"swiftui","w":1},{"from":"folme","to":"intera","w":6},{"from":"intera","to":"spring-animation","w":5},{"from":"intera","to":"patch-runtime","w":4},{"from":"intera","to":"variable-manager","w":3},{"from":"intera","to":"toggle-condition","w":3},{"from":"display-state","to":"intera","w":4},{"from":"intera","to":"smart-animate","w":3},{"from":"intera","to":"playwright-bdd","w":4},{"from":"folme","to":"spring-animation","w":5},{"from":"folme","to":"smart-animate","w":4},{"from":"folme","to":"toumo","w":7},{"from":"display-state","to":"spring-animation","w":3},{"from":"smart-animate","to":"spring-animation","w":4},{"from":"patch-runtime","to":"variable-manager","w":4},{"from":"patch-runtime","to":"toggle-condition","w":4},{"from":"toggle-condition","to":"variable-manager","w":3},{"from":"display-state","to":"smart-animate","w":3},{"from":"kenefe","to":"toumo","w":5},{"from":"generative-ui","to":"mercury-os","w":2},{"from":"generative-ui","to":"telepath","w":2},{"from":"desktop-neo","to":"generative-ui","w":2},{"from":"ai-native-interface","to":"generative-ui","w":4},{"from":"generative-ui","to":"intent-driven-os","w":2},{"from":"mercury-os","to":"telepath","w":2},{"from":"desktop-neo","to":"mercury-os","w":2},{"from":"ai-native-interface","to":"mercury-os","w":2},{"from":"intent-driven-os","to":"mercury-os","w":2},{"from":"desktop-neo","to":"telepath","w":2},{"from":"ai-native-interface","to":"telepath","w":2},{"from":"intent-driven-os","to":"telepath","w":2},{"from":"ai-native-interface","to":"desktop-neo","w":2},{"from":"desktop-neo","to":"intent-driven-os","w":2},{"from":"ai-native-interface","to":"intent-driven-os","w":2},{"from":"agent-engineering","to":"anthropic-harness","w":1},{"from":"agent-engineering","to":"openai-harness","w":1},{"from":"agent-engineering","to":"codex","w":1},{"from":"agent-engineering","to":"cursor-scaling","w":1},{"from":"agent-engineering","to":"multi-agent","w":1},{"from":"agent-engineering","to":"context-engineering","w":1},{"from":"agent-engineering","to":"agent-memory","w":1},{"from":"agent-engineering","to":"progress-file","w":1},{"from":"agent-engineering","to":"agent-legibility","w":1},{"from":"agent-engineering","to":"agents-md","w":1},{"from":"agent-engineering","to":"barry-zhang","w":1},{"from":"anthropic-harness","to":"openai-harness","w":1},{"from":"anthropic-harness","to":"codex","w":1},{"from":"anthropic-harness","to":"cursor-scaling","w":1},{"from":"anthropic-harness","to":"multi-agent","w":1},{"from":"anthropic-harness","to":"context-engineering","w":1},{"from":"agent-memory","to":"anthropic-harness","w":3},{"from":"anthropic-harness","to":"progress-file","w":4},{"from":"agent-legibility","to":"anthropic-harness","w":1},{"from":"agents-md","to":"anthropic-harness","w":1},{"from":"anthropic-harness","to":"barry-zhang","w":3},{"from":"codex","to":"openai-harness","w":4},{"from":"cursor-scaling","to":"openai-harness","w":1},{"from":"multi-agent","to":"openai-harness","w":1},{"from":"context-engineering","to":"openai-harness","w":1},{"from":"agent-memory","to":"openai-harness","w":1},{"from":"openai-harness","to":"progress-file","w":1},{"from":"agent-legibility","to":"openai-harness","w":4},{"from":"agents-md","to":"openai-harness","w":4},{"from":"barry-zhang","to":"openai-harness","w":1},{"from":"codex","to":"cursor-scaling","w":1},{"from":"codex","to":"multi-agent","w":1},{"from":"codex","to":"context-engineering","w":1},{"from":"agent-memory","to":"codex","w":1},{"from":"codex","to":"progress-file","w":1},{"from":"agent-legibility","to":"codex","w":1},{"from":"agents-md","to":"codex","w":1},{"from":"barry-zhang","to":"codex","w":1},{"from":"cursor-scaling","to":"multi-agent","w":4},{"from":"context-engineering","to":"cursor-scaling","w":1},{"from":"agent-memory","to":"cursor-scaling","w":1},{"from":"cursor-scaling","to":"progress-file","w":1},{"from":"agent-legibility","to":"cursor-scaling","w":1},{"from":"agents-md","to":"cursor-scaling","w":1},{"from":"barry-zhang","to":"cursor-scaling","w":1},{"from":"context-engineering","to":"multi-agent","w":1},{"from":"agent-memory","to":"multi-agent","w":1},{"from":"multi-agent","to":"progress-file","w":1},{"from":"agent-legibility","to":"multi-agent","w":1},{"from":"agents-md","to":"multi-agent","w":1},{"from":"barry-zhang","to":"multi-agent","w":1},{"from":"agent-memory","to":"context-engineering","w":3},{"from":"context-engineering","to":"progress-file","w":1},{"from":"agent-legibility","to":"context-engineering","w":1},{"from":"agents-md","to":"context-engineering","w":1},{"from":"barry-zhang","to":"context-engineering","w":1},{"from":"agent-memory","to":"progress-file","w":1},{"from":"agent-legibility","to":"agent-memory","w":1},{"from":"agent-memory","to":"agents-md","w":1},{"from":"agent-memory","to":"barry-zhang","w":1},{"from":"agent-legibility","to":"progress-file","w":1},{"from":"agents-md","to":"progress-file","w":1},{"from":"barry-zhang","to":"progress-file","w":1},{"from":"agent-legibility","to":"agents-md","w":1},{"from":"agent-legibility","to":"barry-zhang","w":1},{"from":"agents-md","to":"barry-zhang","w":1},{"from":"agent-memory","to":"ray-wang","w":3},{"from":"agent-memory","to":"memory-system","w":3},{"from":"context-engineering","to":"openviking","w":2},{"from":"agent-engineering","to":"openviking","w":1},{"from":"anthropic-harness","to":"dario-amodei","w":1},{"from":"agent-engineering","to":"openclaw","w":2},{"from":"openclaw","to":"soul-md","w":2},{"from":"memory-system","to":"openclaw","w":2},{"from":"ai-scarcity","to":"openclaw","w":1},{"from":"agent-engineering","to":"cobalt","w":1},{"from":"agent-engineering","to":"schematic","w":1},{"from":"agent-engineering","to":"ghidra-mcp","w":1},{"from":"agent-engineering","to":"scratch-app","w":1},{"from":"agent-browser","to":"agent-engineering","w":1},{"from":"agent-engineering","to":"beautiful-mermaid","w":1},{"from":"agent-engineering","to":"markdown-for-agents","w":1},{"from":"agent-engineering","to":"cloudflare","w":1},{"from":"cloudflare","to":"markdown-for-agents","w":2},{"from":"agent-legibility","to":"markdown-for-agents","w":2},{"from":"shader-graph","to":"webgpu","w":2},{"from":"making-software","to":"taste","w":1},{"from":"taste","to":"userinterface-wiki","w":1},{"from":"ai-native-interface","to":"cosmos-ai-os","w":2},{"from":"cosmos-ai-os","to":"intent-driven-os","w":1},{"from":"mind-palace","to":"raindrop","w":4},{"from":"mind-palace","to":"notion-api","w":2},{"from":"mind-palace","to":"web-search-mcp","w":2},{"from":"kenefe","to":"mind-palace","w":4},{"from":"agent-engineering","to":"dev-methodology","w":2},{"from":"dev-methodology","to":"progress-file","w":2},{"from":"feature-json","to":"progress-file","w":2},{"from":"figma-plugin","to":"lottie","w":2},{"from":"dev-methodology","to":"toumo","w":1},{"from":"self-verify","to":"toumo","w":1},{"from":"kenefe","to":"mijia","w":1},{"from":"kenefe","to":"whisper","w":2},{"from":"discord","to":"kenefe","w":1},{"from":"mijia","to":"python-miio","w":1},{"from":"kenefe","to":"siggraph","w":1},{"from":"daily-brief","to":"vercel","w":1},{"from":"daily-brief","to":"github-pages","w":1},{"from":"daily-brief","to":"kenefe","w":3},{"from":"daily-brief","to":"rss","w":3},{"from":"agent-os","to":"figma-plugin","w":1},{"from":"figma-plugin","to":"kenefe","w":1},{"from":"agent-os","to":"kenefe","w":1},{"from":"slidejot","to":"swiftui","w":2},{"from":"kenefe","to":"slidejot","w":2},{"from":"cloudkit","to":"slidejot","w":1},{"from":"ios-app-switcher","to":"kenefe","w":1},{"from":"webgpu","to":"webgpu-3dgs","w":1},{"from":"new-york-serif","to":"slidejot","w":1},{"from":"slidejot","to":"taste","w":1},{"from":"intera","to":"toumo","w":2},{"from":"smart-animate","to":"toumo","w":1},{"from":"kenefe","to":"openclaw","w":1},{"from":"discord","to":"openclaw","w":1},{"from":"kenefe","to":"molttalk","w":1},{"from":"molttalk","to":"vercel","w":2},{"from":"kenefe","to":"web-search-mcp","w":1},{"from":"kenefe","to":"memory-system","w":2},{"from":"molttalk","to":"upstash-redis","w":1},{"from":"molttalk","to":"swiftui","w":1},{"from":"molttalk","to":"web-search-mcp","w":1},{"from":"molttalk","to":"openclaw","w":1},{"from":"actibook","to":"mukoita1","w":1},{"from":"actibook","to":"kenefe","w":1},{"from":"kenefe","to":"notion-api","w":2},{"from":"origami","to":"protopie","w":1},{"from":"origami","to":"rive","w":1},{"from":"origami","to":"principle","w":1},{"from":"protopie","to":"rive","w":1},{"from":"principle","to":"protopie","w":1},{"from":"principle","to":"rive","w":1},{"from":"kenefe","to":"origami","w":1},{"from":"kenefe","to":"protopie","w":1},{"from":"cursor-rules","to":"deep-thinking","w":1},{"from":"cursor-rules","to":"kenefe","w":1},{"from":"deep-thinking","to":"kenefe","w":2},{"from":"braindown","to":"ia-writer","w":2},{"from":"braindown","to":"typora","w":1},{"from":"github-pages","to":"jotjot","w":1},{"from":"kenefe","to":"liquidwindow","w":1},{"from":"liquidwindow","to":"xcodegen","w":1},{"from":"braindown","to":"theotype-peacock","w":1},{"from":"theotype-peacock","to":"typography","w":1},{"from":"playwright-bdd","to":"toumo","w":2},{"from":"codesign","to":"developer-id","w":1},{"from":"developer-id","to":"notarize","w":1},{"from":"jotjot","to":"ota-distribution","w":1},{"from":"github-pages","to":"ota-distribution","w":1},{"from":"openclaw","to":"peter-steinberger","w":1},{"from":"toggle-condition","to":"toumo","w":1},{"from":"toumo","to":"variable-manager","w":1},{"from":"patch-runtime","to":"toumo","w":1},{"from":"display-state","to":"toumo","w":1},{"from":"ffmpeg","to":"toumo","w":1},{"from":"toumo","to":"agent-engineering","w":2},{"from":"intera","to":"agent-engineering","w":3},{"from":"intera","to":"architecture","w":3},{"from":"toumo","to":"sub-agent","w":2},{"from":"sub-agent","to":"context-management","w":3},{"from":"intera","to":"methodology","w":3},{"from":"kenefe","to":"methodology","w":2}],"clusters":[{"id":"design-system","label":"设计体系","nodes":["typography","gestalt","thetype","refactoring-ui","craft","bear","notion","taste","density","spacing-system","proximity","georgia-serif"]},{"id":"dev-framework","label":"开发方法论","nodes":["dev-methodology","mvp","dbb","self-verify","feature-json","vision-md","harper-reed","anthropic-harness","openai-harness"]},{"id":"braindown-tech","label":"BrainDown 技术栈","nodes":["nstextview","highlightr","nstexttable","block-bg-layout","xcodegen","codesign","notarize"]},{"id":"toolchain","label":"工具链","nodes":["browser-control","web-search-mcp","whisper","notion-api","x-tweet-fetcher","playwright-bdd"]},{"id":"intera-engine","label":"Intera 动画引擎","nodes":["folme","spring-animation","variable-manager","patch-runtime","toggle-condition","display-state","smart-animate"]},{"id":"ai-native-ui","label":"AI 原生界面","nodes":["generative-ui","mercury-os","telepath","desktop-neo","ai-native-interface","intent-driven-os","cosmos-ai-os"]},{"id":"agent-eng","label":"Agent 工程","nodes":["agent-engineering","codex","cursor-scaling","multi-agent","context-engineering","agent-memory","progress-file","agent-legibility","agents-md","openviking","markdown-for-agents"]},{"id":"bookmark-tools","label":"收藏工具链","nodes":["mind-palace","raindrop","cobalt","schematic","ghidra-mcp","scratch-app","agent-browser","beautiful-mermaid"]},{"id":"molttalk-stack","label":"MoltTalk 技术栈","nodes":["molttalk","upstash-redis","vercel","discord"]},{"id":"daily-brief-stack","label":"Daily Brief","nodes":["daily-brief","rss","vercel","github-pages"]},{"id":"interaction-design","label":"交互设计工具","nodes":["origami","protopie","rive","principle","intera","toumo"]}]};
+
+// === COLOR MAP ===
+const clusterColors = {
+  "design-system": "#FF6B6B",
+  "dev-framework": "#4ECDC4",
+  "braindown-tech": "#45B7D1",
+  "toolchain": "#96CEB4",
+  "intera-engine": "#FFEAA7",
+  "ai-native-ui": "#DDA0DD",
+  "agent-eng": "#F0A500",
+  "bookmark-tools": "#98D8C8",
+  "molttalk-stack": "#E8A87C",
+  "daily-brief-stack": "#85CDCA",
+  "interaction-design": "#C3AED6"
+};
+const clusterLabels = {};
+const nodeCluster = {};
+
+graphData.clusters.forEach(c => {
+  clusterLabels[c.id] = c.label;
+  c.nodes.forEach(nid => {
+    if (!nodeCluster[nid]) nodeCluster[nid] = c.id;
+  });
+});
+
+function getColor(id) {
+  return clusterColors[nodeCluster[id]] || "#666";
+}
+
+// === BUILD NODES & LINKS ===
+const nodes = Object.entries(graphData.nodes).map(([id, meta]) => ({ id, ...meta }));
+const links = graphData.edges.map(e => ({ source: e.from, target: e.to, weight: e.w }));
+
+// degree map
+const degree = {};
+nodes.forEach(n => degree[n.id] = 0);
+links.forEach(l => { degree[l.source] = (degree[l.source]||0) + 1; degree[l.target] = (degree[l.target]||0) + 1; });
+
+// adjacency
+const adj = {};
+nodes.forEach(n => adj[n.id] = new Set());
+links.forEach(l => { adj[l.source].add(l.target); adj[l.target].add(l.source); });
+
+// === SVG SETUP ===
+const W = window.innerWidth, H = window.innerHeight;
+const svg = d3.select("#graph").attr("width", W).attr("height", H);
+const defs = svg.append("defs");
+
+// glow filter — multiple levels based on importance
+[1,2,3,4,5].forEach(imp => {
+  const f = defs.append("filter").attr("id", `glow${imp}`).attr("x", "-80%").attr("y", "-80%").attr("width", "260%").attr("height", "260%");
+  f.append("feGaussianBlur").attr("stdDeviation", 1.5 + imp * 1.2).attr("result", "blur");
+  const m = f.append("feMerge");
+  m.append("feMergeNode").attr("in", "blur");
+  m.append("feMergeNode").attr("in", "SourceGraphic");
+});
+
+const g = svg.append("g");
+
+// zoom
+const zoom = d3.zoom().scaleExtent([0.15, 5]).on("zoom", e => g.attr("transform", e.transform));
+svg.call(zoom);
+
+// weight → stroke width
+const wScale = d3.scaleLinear().domain([1, 10]).range([0.5, 4]).clamp(true);
+
+// degree → radius
+const maxDeg = d3.max(Object.values(degree)) || 1;
+const rScale = d3.scaleSqrt().domain([1, maxDeg]).range([4, 22]);
+
+// === DRAW ===
+const hullG = g.append("g").attr("class", "hulls");
+const linkG = g.append("g");
+const pulseG = g.append("g");
+const nodeG = g.append("g");
+const labelG = g.append("g");
+
+// Bezier curves instead of lines
+const linkEls = linkG.selectAll("path").data(links).join("path")
+  .attr("stroke", "#333").attr("stroke-opacity", 0.35)
+  .attr("stroke-width", d => wScale(d.weight))
+  .attr("fill", "none");
+
+// Pulse dots on strong edges (weight >= 5)
+const strongLinks = links.filter(l => l.weight >= 5);
+const pulseEls = pulseG.selectAll("circle").data(strongLinks).join("circle")
+  .attr("r", 1.5)
+  .attr("fill", d => getColor(d.source.id || d.source))
+  .attr("fill-opacity", 0.8)
+  .style("filter", "url(#glow2)");
+
+const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
+  .attr("r", d => rScale(degree[d.id] || 1))
+  .attr("fill", d => getColor(d.id))
+  .attr("stroke", d => getColor(d.id))
+  .attr("stroke-width", 1.5)
+  .attr("stroke-opacity", 0.5)
+  .attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5)
+  .style("filter", d => `url(#glow${Math.min(d.imp || 1, 5)})`)
+  .style("cursor", "grab");
+
+const labelEls = labelG.selectAll("text").data(nodes, d => d.id).join("text")
+  .text(d => d.id)
+  .attr("font-size", d => Math.max(8, Math.min(12, rScale(degree[d.id]||1) * 0.7)))
+  .attr("fill", "#aaa").attr("fill-opacity", 0.7)
+  .attr("text-anchor", "middle").attr("dy", d => rScale(degree[d.id]||1) + 12)
+  .style("pointer-events", "none").style("user-select", "none");
+
+// === SIMULATION ===
+// Bezier helper: slight curve offset
+function linkPath(d) {
+  const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+  const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+  const off = dist * 0.12; // curve amount
+  const mx = (d.source.x + d.target.x) / 2 - dy * off / dist;
+  const my = (d.source.y + d.target.y) / 2 + dx * off / dist;
+  return `M${d.source.x},${d.source.y} Q${mx},${my} ${d.target.x},${d.target.y}`;
+}
+
+// Cluster convex hulls
+const clusterNodeMap = {};
+graphData.clusters.forEach(c => { clusterNodeMap[c.id] = c.nodes; });
+
+function updateHulls() {
+  const hullData = [];
+  Object.entries(clusterNodeMap).forEach(([cid, nids]) => {
+    const pts = nids.map(nid => {
+      const n = nodes.find(x => x.id === nid);
+      return n ? [n.x, n.y] : null;
+    }).filter(Boolean);
+    if (pts.length >= 3) {
+      const hull = d3.polygonHull(pts);
+      if (hull) {
+        // Smooth hull with padding
+        const cx = d3.mean(hull, p => p[0]);
+        const cy = d3.mean(hull, p => p[1]);
+        const padded = hull.map(p => {
+          const dx = p[0] - cx, dy = p[1] - cy;
+          const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+          return [p[0] + dx/dist * 30, p[1] + dy/dist * 30];
+        });
+        hullData.push({ id: cid, hull: padded });
+      }
+    }
+  });
+  const hulls = hullG.selectAll("path").data(hullData, d => d.id);
+  hulls.enter().append("path")
+    .attr("fill", d => clusterColors[d.id] || "#666")
+    .attr("fill-opacity", 0.03)
+    .attr("stroke", d => clusterColors[d.id] || "#666")
+    .attr("stroke-opacity", 0.06)
+    .attr("stroke-width", 1)
+    .attr("stroke-linejoin", "round")
+    .merge(hulls)
+    .attr("d", d => {
+      // Round the hull with curve
+      const pts = d.hull;
+      if (pts.length < 3) return "";
+      let path = `M${pts[0][0]},${pts[0][1]}`;
+      for (let i = 1; i < pts.length; i++) {
+        const prev = pts[i-1], curr = pts[i];
+        const mx = (prev[0]+curr[0])/2, my = (prev[1]+curr[1])/2;
+        path += ` Q${prev[0]},${prev[1]} ${mx},${my}`;
+      }
+      const last = pts[pts.length-1], first = pts[0];
+      path += ` Q${last[0]},${last[1]} ${(last[0]+first[0])/2},${(last[1]+first[1])/2}`;
+      path += "Z";
+      return path;
+    });
+  hulls.exit().remove();
+}
+
+// Breathing animation
+const breathStart = Date.now();
+const breathPhase = {};
+nodes.forEach(n => breathPhase[n.id] = Math.random() * Math.PI * 2);
+
+// Pulse animation state
+const pulseProgress = {};
+strongLinks.forEach((l, i) => pulseProgress[i] = Math.random());
+
+const sim = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(links).id(d => d.id).distance(d => 50 / Math.sqrt(d.weight || 1)).strength(d => 0.4 * Math.sqrt(d.weight || 1)))
+  .force("charge", d3.forceManyBody().strength(d => -40 - degree[d.id] * 4).distanceMax(300))
+  .force("center", d3.forceCenter(W / 2, H / 2).strength(0.05))
+  .force("collision", d3.forceCollide().radius(d => rScale(degree[d.id]||1) + 4))
+  .force("gravity", d3.forceRadial(0, W/2, H/2).strength(d => degree[d.id] <= 2 ? 0.08 : 0.01))
+  .force("collision", d3.forceCollide().radius(d => rScale(degree[d.id]||1) + 6))
+  .alphaDecay(0.02)
+  .on("tick", () => {
+    linkEls.attr("d", linkPath);
+    nodeEls.attr("cx", d => d.x).attr("cy", d => d.y);
+    labelEls.attr("x", d => d.x).attr("y", d => d.y);
+    updateHulls();
+  });
+
+// === DRAG ===
+nodeEls.call(d3.drag()
+  .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+  .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
+  .on("end", (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+);
+
+// === HOVER: NODE ===
+const tooltip = d3.select("#tooltip");
+
+nodeEls.on("mouseenter", (e, d) => {
+  const neighbors = adj[d.id];
+  nodeEls.attr("fill-opacity", n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.08)
+         .attr("stroke-opacity", n => (n.id === d.id || neighbors.has(n.id)) ? 0.8 : 0.05);
+  linkEls.attr("stroke-opacity", l => (l.source.id === d.id || l.target.id === d.id) ? 0.8 : 0.03)
+         .attr("stroke", l => (l.source.id === d.id || l.target.id === d.id) ? getColor(d.id) : "#333");
+  labelEls.attr("fill-opacity", n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.05);
+
+  let html = `<div class="tt-name" style="color:${getColor(d.id)}">${d.id}</div>`;
+  html += `<div class="tt-type">${d.type || ''}${nodeCluster[d.id] ? ' · ' + clusterLabels[nodeCluster[d.id]] : ''}</div>`;
+  html += `<div class="tt-meta">连接数: ${degree[d.id] || 0}</div>`;
+  if (d.status) html += `<div class="tt-meta">状态: ${d.status}</div>`;
+  if (d.relation) html += `<div class="tt-meta">关系: ${d.relation}</div>`;
+  if (d.context) html += `<div class="tt-meta">${d.context}</div>`;
+  if (d.deploy) html += `<div class="tt-meta">🔗 ${d.deploy}</div>`;
+  tooltip.html(html).style("display", "block");
+})
+.on("mousemove", e => {
+  tooltip.style("left", (e.clientX + 14) + "px").style("top", (e.clientY - 10) + "px");
+})
+.on("mouseleave", () => {
+  nodeEls.attr("fill-opacity", 0.85).attr("stroke-opacity", 0.5);
+  linkEls.attr("stroke-opacity", 0.4).attr("stroke", "#333");
+  labelEls.attr("fill-opacity", 0.7);
+  tooltip.style("display", "none");
+});
+
+// === HOVER: EDGE ===
+linkEls.on("mouseenter", (e, d) => {
+  tooltip.html(`<div class="tt-name">${d.source.id} ↔ ${d.target.id}</div><div class="tt-meta">weight: ${d.weight}</div>`)
+         .style("display", "block");
+})
+.on("mousemove", e => {
+  tooltip.style("left", (e.clientX + 14) + "px").style("top", (e.clientY - 10) + "px");
+})
+.on("mouseleave", () => { tooltip.style("display", "none"); });
+
+// === SEARCH ===
+const searchInput = document.getElementById("search");
+searchInput.addEventListener("input", () => {
+  const q = searchInput.value.trim().toLowerCase();
+  if (!q) {
+    nodeEls.attr("fill-opacity", 0.85).attr("stroke-opacity", 0.5).attr("stroke-width", 1.5);
+    linkEls.attr("stroke-opacity", 0.4);
+    labelEls.attr("fill-opacity", 0.7);
+    return;
+  }
+  const matched = new Set();
+  nodes.forEach(n => { if (n.id.toLowerCase().includes(q)) matched.add(n.id); });
+  nodeEls.attr("fill-opacity", n => matched.has(n.id) ? 1 : 0.08)
+         .attr("stroke-opacity", n => matched.has(n.id) ? 1 : 0.05)
+         .attr("stroke-width", n => matched.has(n.id) ? 3 : 1.5);
+  linkEls.attr("stroke-opacity", l => (matched.has(l.source.id) || matched.has(l.target.id)) ? 0.6 : 0.03);
+  labelEls.attr("fill-opacity", n => matched.has(n.id) ? 1 : 0.05);
+});
+
+// === LEGEND ===
+const legendDiv = document.getElementById("legend");
+const legendItems = [
+  ["设计体系", "#FF6B6B"], ["开发方法论", "#4ECDC4"], ["BrainDown 技术栈", "#45B7D1"],
+  ["工具链", "#96CEB4"], ["Intera 动画引擎", "#FFEAA7"], ["AI 原生界面", "#DDA0DD"],
+  ["Agent 工程", "#F0A500"], ["收藏工具链", "#98D8C8"], ["无 cluster", "#666"]
+];
+legendDiv.innerHTML = legendItems.map(([l, c]) =>
+  `<div class="item"><div class="dot" style="background:${c};box-shadow:0 0 6px ${c}"></div>${l}</div>`
+).join("");
+
+// === STATS ===
+document.getElementById("stats").textContent = `${nodes.length} nodes · ${links.length} edges`;
+
+// === RESIZE ===
+window.addEventListener("resize", () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  svg.attr("width", w).attr("height", h);
+  sim.force("center", d3.forceCenter(w / 2, h / 2)).alpha(0.1).restart();
+});
+
+// === BREATHING + PULSE ANIMATION ===
+function animateLoop() {
+  const t = (Date.now() - breathStart) / 1000;
+  // Breathing: subtle radius oscillation
+  nodeEls.attr("r", d => {
+    const base = rScale(degree[d.id] || 1);
+    const breath = Math.sin(t * 0.8 + breathPhase[d.id]) * base * 0.04;
+    return base + breath;
+  });
+  // Pulse dots along strong edges
+  strongLinks.forEach((l, i) => {
+    pulseProgress[i] += 0.003 * (l.weight / 5);
+    if (pulseProgress[i] > 1) pulseProgress[i] = 0;
+    const p = pulseProgress[i];
+    const sx = l.source.x, sy = l.source.y, tx = l.target.x, ty = l.target.y;
+    const dx = tx - sx, dy = ty - sy;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const off = dist * 0.12;
+    const mx = (sx + tx) / 2 - dy * off / dist;
+    const my = (sy + ty) / 2 + dx * off / dist;
+    // Quadratic bezier point at t=p
+    const x = (1-p)*(1-p)*sx + 2*(1-p)*p*mx + p*p*tx;
+    const y = (1-p)*(1-p)*sy + 2*(1-p)*p*my + p*p*ty;
+    d3.select(pulseEls.nodes()[i]).attr("cx", x).attr("cy", y);
+  });
+  requestAnimationFrame(animateLoop);
+}
+requestAnimationFrame(animateLoop);
+
+// === WASD + -/= NAVIGATION ===
+const PAN_SPEED = 40;
+const ZOOM_STEP = 0.15;
+const keys = {};
+
+window.addEventListener("keydown", e => {
+  if (e.target === searchInput) return; // 搜索框里不触发
+  keys[e.key.toLowerCase()] = true;
+});
+window.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+function navTick() {
+  let dx = 0, dy = 0, dz = 0;
+  if (keys['w'] || keys['arrowup']) dy += PAN_SPEED;
+  if (keys['s'] || keys['arrowdown']) dy -= PAN_SPEED;
+  if (keys['a'] || keys['arrowleft']) dx += PAN_SPEED;
+  if (keys['d'] || keys['arrowright']) dx -= PAN_SPEED;
+  if (keys['='] || keys['+']) dz = ZOOM_STEP;
+  if (keys['-']) dz = -ZOOM_STEP;
+
+  if (dx || dy || dz) {
+    const t = d3.zoomTransform(svg.node());
+    if (dz) {
+      const newK = Math.max(0.15, Math.min(5, t.k * (1 + dz)));
+      const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+      svg.call(zoom.transform, d3.zoomIdentity
+        .translate(cx, cy)
+        .scale(newK)
+        .translate(-(cx - t.x) / t.k, -(cy - t.y) / t.k));
+    } else {
+      svg.call(zoom.transform, t.translate(dx / t.k, dy / t.k));
+    }
+  }
+  requestAnimationFrame(navTick);
+}
+requestAnimationFrame(navTick);
+</script>
+</body>
+</html>
