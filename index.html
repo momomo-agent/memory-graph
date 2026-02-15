@@ -192,14 +192,6 @@ const linkEls = linkG.selectAll("path").data(links).join("path")
   .attr("fill", "none")
   .style("filter", d => (d.weight || 1) >= 5 ? "url(#glow3)" : "none");
 
-// Pulse dots on strong edges (weight >= 5)
-const strongLinks = links.filter(l => l.weight >= 5);
-const pulseEls = pulseG.selectAll("circle").data(strongLinks).join("circle")
-  .attr("r", 1.5)
-  .attr("fill", d => getColor(d.source.id || d.source))
-  .attr("fill-opacity", 0.8)
-  .style("filter", "url(#glow2)");
-
 const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
   .attr("r", d => rScale(degree[d.id] || 1))
   .attr("fill", d => `url(#ng-${d.id.replace(/[^a-zA-Z0-9-]/g, '_')})`)
@@ -295,6 +287,11 @@ const particleEls = particleG.selectAll("circle").data(particles).join("circle")
 const strongLinks = links.filter(l => l.weight >= 5);
 const pulseProgress = {};
 strongLinks.forEach((l, i) => pulseProgress[i] = Math.random());
+const pulseEls = pulseG.selectAll("circle").data(strongLinks).join("circle")
+  .attr("r", 1.5)
+  .attr("fill", d => getColor(d.source.id || d.source))
+  .attr("fill-opacity", 0.8)
+  .style("filter", "url(#glow2)");
 
 const sim = d3.forceSimulation(nodes)
   .force("link", d3.forceLink(links).id(d => d.id).distance(d => 80 / Math.sqrt(d.weight || 1)).strength(d => 0.3 * Math.sqrt(d.weight || 1)))
