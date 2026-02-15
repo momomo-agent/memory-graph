@@ -35,17 +35,17 @@ svg { display: block; }
   position: fixed; bottom: 16px; left: 16px; z-index: 10;
   background: rgba(20,20,20,0.7); border: 1px solid rgba(255,255,255,0.08);
   border-radius: 8px; padding: 12px 16px; backdrop-filter: blur(8px);
-  font-size: 11px; color: #ccc;
+  font-size: 11px; color: #777;
 }
 #legend .item { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
 #legend .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 #stats {
   position: fixed; top: 16px; right: 16px; z-index: 10;
-  color: #ccc; font-size: 11px; text-align: right;
+  color: #777; font-size: 11px; text-align: right;
 }
 #controls {
   position: fixed; bottom: 16px; right: 16px; z-index: 10;
-  color: #ccc; font-size: 11px; text-align: right; line-height: 1.8;
+  color: #777; font-size: 11px; text-align: right; line-height: 1.8;
 }
 #controls kbd {
   background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
@@ -264,21 +264,20 @@ const breathPhase = {};
 nodes.forEach(n => breathPhase[n.id] = Math.random() * Math.PI * 2);
 
 // Pulse animation state — now multiple particles per strong link
-const particleLinks = links.filter(l => l.weight >= 3); // more links get particles
+const particleLinks = links.filter(l => l.weight >= 6); // only strongest links
 const particles = [];
 particleLinks.forEach(l => {
-  const count = l.weight >= 6 ? 3 : l.weight >= 4 ? 2 : 1;
+  const count = l.weight >= 8 ? 2 : 1;
   for (let i = 0; i < count; i++) {
-    particles.push({ link: l, t: Math.random(), speed: 0.002 + Math.random() * 0.003 });
+    particles.push({ link: l, t: Math.random(), speed: 0.002 + Math.random() * 0.002 });
   }
 });
 
-// Create particle elements
+// Create particle elements — no glow filter for performance
 const particleEls = particleG.selectAll("circle").data(particles).join("circle")
-  .attr("r", d => d.link.weight >= 6 ? 2 : 1.5)
+  .attr("r", 1.5)
   .attr("fill", d => getColor(d.link.source.id || d.link.source))
-  .attr("fill-opacity", 0.7)
-  .style("filter", "url(#glow2)");
+  .attr("fill-opacity", 0.6);
 
 // Keep old pulse dots for strongest links
 const strongLinks = links.filter(l => l.weight >= 5);
@@ -287,8 +286,7 @@ strongLinks.forEach((l, i) => pulseProgress[i] = Math.random());
 const pulseEls = pulseG.selectAll("circle").data(strongLinks).join("circle")
   .attr("r", 1.5)
   .attr("fill", d => getColor(d.source.id || d.source))
-  .attr("fill-opacity", 0.8)
-  .style("filter", "url(#glow2)");
+  .attr("fill-opacity", 0.8);
 
 // Initialize node positions near center to prevent drift
 nodes.forEach(n => {
