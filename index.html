@@ -286,7 +286,7 @@ strongLinks.forEach((l, i) => pulseProgress[i] = Math.random());
 const pulseEls = pulseG.selectAll("circle").data(strongLinks).join("circle")
   .attr("r", 1.5)
   .attr("fill", d => getColor(d.source.id || d.source))
-  .attr("fill-opacity", 0.8);
+  .attr("fill-opacity", 0);
 
 // Initialize node positions near center to prevent drift
 nodes.forEach(n => {
