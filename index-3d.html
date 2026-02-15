@@ -71,7 +71,7 @@ canvas { display: block; }
 </div>
 <div id="legend"></div>
 <div id="stats"></div>
-<div id="info">拖拽旋转 · 滚轮缩放 · 右键平移 · 侧面看时间层 · 顶部看2D图</div>
+<div id="info">拖拽旋转 · 滚轮缩放 · 右键平移 · Y轴=时间（连续） · 侧视看时间线 · 俯视看2D图</div>
 <div id="views">
   <button onclick="viewTop()">俯视 (2D)</button>
   <button onclick="viewSide()">侧视 (时间)</button>
@@ -136,27 +136,36 @@ graphData.edges.forEach(e => {
 });
 const maxDeg = Math.max(...Object.values(degree), 1);
 
-// ============ COMPUTE NODE DATES (for Z axis) ============
-const nodeEarliestEdge = {};
+// ============ COMPUTE NODE DATES (for Z axis) — continuous, not discrete ============
+// Use latest edge lastSeen (most recent activity) for each node
+const nodeLatestEdge = {};
 graphData.edges.forEach(e => {
   if (!e.lastSeen) return;
   [e.from, e.to].forEach(nid => {
-    if (!nodeEarliestEdge[nid] || e.lastSeen < nodeEarliestEdge[nid])
-      nodeEarliestEdge[nid] = e.lastSeen;
+    if (!nodeLatestEdge[nid] || e.lastSeen > nodeLatestEdge[nid])
+      nodeLatestEdge[nid] = e.lastSeen;
   });
 });
 const nodeDate = {};
 Object.keys(graphData.nodes).forEach(id => {
   const n = graphData.nodes[id];
-  nodeDate[id] = n.createdAt || nodeEarliestEdge[id] || "2026-01-01";
+  // Priority: createdAt > latest edge activity > fallback
+  nodeDate[id] = n.createdAt || nodeLatestEdge[id] || "2025-12-01";
 });
 const allDates = Object.values(nodeDate);
 const minDate = new Date(Math.min(...allDates.map(d => new Date(d))));
 const maxDate = new Date(Math.max(...allDates.map(d => new Date(d))));
 const dateRange = maxDate - minDate || 1;
 const Z_SPAN = 120;
+
+// Continuous Z mapping: precise date → precise Z position
 function dateToZ(dateStr) {
   return ((new Date(dateStr) - minDate) / dateRange) * Z_SPAN - Z_SPAN / 2;
+}
+
+// Continuous recency: 0.0 (oldest) → 1.0 (newest), used for brightness
+function dateToRecency(dateStr) {
+  return (new Date(dateStr) - minDate) / dateRange;
 }
 
 // ============ ACTIVITY ============
@@ -301,6 +310,7 @@ const dummy = new THREE.Object3D();
 const nodePositions3D = [];
 const nodeRadii = [];
 const baseColors = [];
+const nodeRecency = []; // 0.0 (oldest) → 1.0 (newest), continuous
 
 nodeIds.forEach((id, i) => {
   const x = positions[i].x;
@@ -313,11 +323,15 @@ nodeIds.forEach((id, i) => {
   dummy.updateMatrix();
   instancedNodes.setMatrixAt(i, dummy.matrix);
 
-  const color = new THREE.Color(getColor(id));
+  // Continuous recency brightness: oldest=0.35, newest=1.0
+  const recency = dateToRecency(nodeDate[id]);
+  const recencyBrightness = 0.35 + recency * 0.65;
+  const color = new THREE.Color(getColor(id)).multiplyScalar(recencyBrightness);
   instancedNodes.setColorAt(i, color);
 
   nodePositions3D.push(new THREE.Vector3(x, z, y));
   nodeRadii.push(r);
+  nodeRecency.push(recency);
   baseColors.push(color.clone());
 });
 
@@ -337,7 +351,9 @@ nodeIds.forEach((id, i) => {
   div.className = 'label-3d';
   div.textContent = id;
   const c = getColor(id);
-  const opacity = 0.4 + Math.min(d / maxDeg, 1) * 0.6;
+  const recency = nodeRecency[i];
+  // Label opacity: degree + recency, both continuous
+  const opacity = (0.3 + Math.min(d / maxDeg, 1) * 0.4) * (0.4 + recency * 0.6);
   div.style.color = c;
   div.style.opacity = opacity;
   div.style.fontSize = Math.max(9, Math.min(14, 8 + d * 0.3)) + 'px';
@@ -371,12 +387,17 @@ graphData.edges.forEach((e, ei) => {
 
   // Edge thickness: thin for low weight, thick for high
   const thickness = 0.03 + (w / maxW) * 0.18;
-  // Edge opacity: dim for low weight, bright for high
-  const opacity = 0.15 + Math.min(w / 8, 1) * 0.65;
 
-  // Gradient: source color → target color
-  const c1 = new THREE.Color(getColor(e.from));
-  const c2 = new THREE.Color(getColor(e.to));
+  // Continuous recency for edge: use lastSeen date, not binary
+  const edgeRecency = e.lastSeen ? dateToRecency(e.lastSeen) : 0;
+  const recencyMul = 0.3 + edgeRecency * 0.7; // oldest=0.3, newest=1.0
+
+  // Edge opacity: weight × recency, both continuous
+  const opacity = (0.15 + Math.min(w / 8, 1) * 0.65) * recencyMul;
+
+  // Gradient: source color → target color, dimmed by recency
+  const c1 = new THREE.Color(getColor(e.from)).multiplyScalar(recencyMul);
+  const c2 = new THREE.Color(getColor(e.to)).multiplyScalar(recencyMul);
 
   // Use a simple line with custom geometry for gradient
   const points = [s.clone(), t.clone()];
@@ -485,13 +506,66 @@ Object.entries(clusterNodeMap).forEach(([cid, nids]) => {
   }
 });
 
-// ============ TIME AXIS HELPER ============
-const axisGeo = new THREE.BufferGeometry().setFromPoints([
-  new THREE.Vector3(-110, -Z_SPAN/2, -110),
-  new THREE.Vector3(-110, Z_SPAN/2, -110)
-]);
-const axisMat = new THREE.LineBasicMaterial({ color: 0x333344 });
-scene.add(new THREE.Line(axisGeo, axisMat));
+// ============ TIME AXIS with date tick marks ============
+{
+  const axisX = -110, axisZz = -110;
+  // Main axis line
+  const axisGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(axisX, -Z_SPAN/2, axisZz),
+    new THREE.Vector3(axisX, Z_SPAN/2, axisZz)
+  ]);
+  scene.add(new THREE.Line(axisGeo, new THREE.LineBasicMaterial({ color: 0x333344 })));
+
+  // Generate weekly tick marks from minDate to maxDate
+  const tickStart = new Date(minDate);
+  tickStart.setDate(tickStart.getDate() - tickStart.getDay() + 1); // round to Monday
+  if (tickStart > minDate) tickStart.setDate(tickStart.getDate() - 7);
+
+  const monthsSeen = new Set();
+  const d = new Date(tickStart);
+  const tickEnd = new Date(maxDate.getTime() + 7 * 86400000);
+
+  while (d <= tickEnd) {
+    const dateStr = d.toISOString().slice(0, 10);
+    const tz = dateToZ(dateStr);
+    if (tz >= -Z_SPAN/2 - 2 && tz <= Z_SPAN/2 + 2) {
+      // Tick line
+      const tGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(axisX - 2, tz, axisZz),
+        new THREE.Vector3(axisX + 2, tz, axisZz)
+      ]);
+      scene.add(new THREE.Line(tGeo, new THREE.LineBasicMaterial({ color: 0x444466 })));
+
+      // Weekly date label
+      const div = document.createElement('div');
+      div.className = 'label-3d';
+      div.textContent = (d.getMonth()+1) + '/' + d.getDate();
+      div.style.color = '#555';
+      div.style.fontSize = '9px';
+      div.style.opacity = '0.6';
+      const lbl = new CSS2DObject(div);
+      lbl.position.set(axisX - 6, tz, axisZz);
+      scene.add(lbl);
+
+      // Month label (first tick of each month)
+      const mKey = d.getFullYear() + '-' + (d.getMonth()+1);
+      if (!monthsSeen.has(mKey)) {
+        monthsSeen.add(mKey);
+        const mdiv = document.createElement('div');
+        mdiv.className = 'label-3d';
+        mdiv.textContent = d.getFullYear() + '/' + (d.getMonth()+1);
+        mdiv.style.color = '#777';
+        mdiv.style.fontSize = '11px';
+        mdiv.style.fontWeight = '600';
+        mdiv.style.opacity = '0.8';
+        const mlbl = new CSS2DObject(mdiv);
+        mlbl.position.set(axisX - 14, tz, axisZz);
+        scene.add(mlbl);
+      }
+    }
+    d.setDate(d.getDate() + 7);
+  }
+}
 
 // ============ RAYCASTING & INTERACTION ============
 const raycaster = new THREE.Raycaster();
@@ -617,7 +691,8 @@ renderer.domElement.addEventListener('mousemove', (e) => {
     tooltip.querySelector('.tt-type').textContent = (n.type || '') + (cid ? ' · ' + (clusterLabels[cid] || cid) : '');
     tooltip.querySelector('.tt-cluster').textContent = cid ? clusterLabels[cid] || cid : '未分类';
     tooltip.querySelector('.tt-cluster').style.color = getColor(id);
-    tooltip.querySelector('.tt-date').textContent = nodeDate[id];
+    const recVal = nodeRecency[idx];
+    tooltip.querySelector('.tt-date').textContent = nodeDate[id] + ' (活跃度 ' + Math.round(recVal * 100) + '%)';
 
     let meta = '连接数: ' + (degree[id] || 0);
     if (n.imp) meta += ' · 重要度: ' + n.imp;
