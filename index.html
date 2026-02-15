@@ -8,6 +8,11 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #0a0a0a; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+body::before {
+  content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: radial-gradient(ellipse at 50% 50%, rgba(30,30,50,0.4) 0%, rgba(10,10,10,0) 70%);
+  pointer-events: none; z-index: 0;
+}
 svg { display: block; }
 #search {
   position: fixed; top: 16px; left: 16px; z-index: 10;
@@ -137,8 +142,19 @@ const rScale = d3.scaleSqrt().domain([1, maxDeg]).range([4, 22]);
 const hullG = g.append("g").attr("class", "hulls");
 const linkG = g.append("g");
 const pulseG = g.append("g");
+const particleG = g.append("g"); // particle layer
 const nodeG = g.append("g");
 const labelG = g.append("g");
+
+// Radial gradients for each node (neuron glow effect)
+nodes.forEach(n => {
+  const c = getColor(n.id);
+  const rg = defs.append("radialGradient").attr("id", `ng-${n.id.replace(/[^a-zA-Z0-9-]/g, '_')}`);
+  rg.append("stop").attr("offset", "0%").attr("stop-color", "#fff").attr("stop-opacity", 0.9);
+  rg.append("stop").attr("offset", "25%").attr("stop-color", c).attr("stop-opacity", 0.85);
+  rg.append("stop").attr("offset", "70%").attr("stop-color", c).attr("stop-opacity", 0.4);
+  rg.append("stop").attr("offset", "100%").attr("stop-color", c).attr("stop-opacity", 0.05);
+});
 
 // Bezier curves — gradient for cross-cluster edges
 // First create gradient defs for each link
@@ -186,7 +202,7 @@ const pulseEls = pulseG.selectAll("circle").data(strongLinks).join("circle")
 
 const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
   .attr("r", d => rScale(degree[d.id] || 1))
-  .attr("fill", d => getColor(d.id))
+  .attr("fill", d => `url(#ng-${d.id.replace(/[^a-zA-Z0-9-]/g, '_')})`)
   .attr("stroke", d => getColor(d.id))
   .attr("stroke-width", 1.5)
   .attr("stroke-opacity", 0.5)
@@ -258,7 +274,25 @@ const breathStart = Date.now();
 const breathPhase = {};
 nodes.forEach(n => breathPhase[n.id] = Math.random() * Math.PI * 2);
 
-// Pulse animation state
+// Pulse animation state — now multiple particles per strong link
+const particleLinks = links.filter(l => l.weight >= 3); // more links get particles
+const particles = [];
+particleLinks.forEach(l => {
+  const count = l.weight >= 6 ? 3 : l.weight >= 4 ? 2 : 1;
+  for (let i = 0; i < count; i++) {
+    particles.push({ link: l, t: Math.random(), speed: 0.002 + Math.random() * 0.003 });
+  }
+});
+
+// Create particle elements
+const particleEls = particleG.selectAll("circle").data(particles).join("circle")
+  .attr("r", d => d.link.weight >= 6 ? 2 : 1.5)
+  .attr("fill", d => getColor(d.link.source.id || d.link.source))
+  .attr("fill-opacity", 0.7)
+  .style("filter", "url(#glow2)");
+
+// Keep old pulse dots for strongest links
+const strongLinks = links.filter(l => l.weight >= 5);
 const pulseProgress = {};
 strongLinks.forEach((l, i) => pulseProgress[i] = Math.random());
 
@@ -488,7 +522,13 @@ window.addEventListener("resize", () => {
   sim.force("center", d3.forceCenter(w / 2, h / 2)).alpha(0.1).restart();
 });
 
-// === BREATHING + PULSE ANIMATION ===
+// === BREATHING + PARTICLE FLOW ANIMATION ===
+function quadBezierPoint(sx, sy, mx, my, tx, ty, t) {
+  const x = (1-t)*(1-t)*sx + 2*(1-t)*t*mx + t*t*tx;
+  const y = (1-t)*(1-t)*sy + 2*(1-t)*t*my + t*t*ty;
+  return [x, y];
+}
+
 function animateLoop() {
   const t = (Date.now() - breathStart) / 1000;
   // Breathing: subtle radius oscillation
@@ -497,7 +537,26 @@ function animateLoop() {
     const breath = Math.sin(t * 0.8 + breathPhase[d.id]) * base * 0.04;
     return base + breath;
   });
-  // Pulse dots along strong edges
+
+  // Particle flow along edges
+  particles.forEach((p, i) => {
+    p.t += p.speed;
+    if (p.t > 1) p.t -= 1;
+    const l = p.link;
+    const sx = l.source.x, sy = l.source.y, tx = l.target.x, ty = l.target.y;
+    const dx = tx - sx, dy = ty - sy;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const off = dist * 0.12;
+    const mx = (sx + tx) / 2 - dy * off / dist;
+    const my = (sy + ty) / 2 + dx * off / dist;
+    const [px, py] = quadBezierPoint(sx, sy, mx, my, tx, ty, p.t);
+    // Fade in/out at endpoints
+    const fade = Math.min(p.t * 5, (1 - p.t) * 5, 1);
+    const el = d3.select(particleEls.nodes()[i]);
+    el.attr("cx", px).attr("cy", py).attr("fill-opacity", 0.5 * fade);
+  });
+
+  // Old pulse dots — keep them too for strongest links
   strongLinks.forEach((l, i) => {
     pulseProgress[i] += 0.003 * (l.weight / 5);
     if (pulseProgress[i] > 1) pulseProgress[i] = 0;
@@ -508,11 +567,10 @@ function animateLoop() {
     const off = dist * 0.12;
     const mx = (sx + tx) / 2 - dy * off / dist;
     const my = (sy + ty) / 2 + dx * off / dist;
-    // Quadratic bezier point at t=p
-    const x = (1-p)*(1-p)*sx + 2*(1-p)*p*mx + p*p*tx;
-    const y = (1-p)*(1-p)*sy + 2*(1-p)*p*my + p*p*ty;
-    d3.select(pulseEls.nodes()[i]).attr("cx", x).attr("cy", y);
+    const [px, py] = quadBezierPoint(sx, sy, mx, my, tx, ty, p);
+    d3.select(pulseEls.nodes()[i]).attr("cx", px).attr("cy", py);
   });
+
   requestAnimationFrame(animateLoop);
 }
 requestAnimationFrame(animateLoop);
