@@ -140,15 +140,37 @@ const pulseG = g.append("g");
 const nodeG = g.append("g");
 const labelG = g.append("g");
 
-// Bezier curves instead of lines — always show cluster color like hover state
+// Bezier curves — gradient for cross-cluster edges
+// First create gradient defs for each link
+const linkGradients = defs.selectAll("linearGradient.link-grad")
+  .data(links).join("linearGradient")
+  .attr("class", "link-grad")
+  .attr("id", (d, i) => `lg${i}`)
+  .attr("gradientUnits", "userSpaceOnUse");
+
+linkGradients.append("stop").attr("offset", "0%");
+linkGradients.append("stop").attr("offset", "100%");
+
+function updateGradients() {
+  linkGradients
+    .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+    .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+  linkGradients.select("stop:first-child")
+    .attr("stop-color", d => {
+      const c = getColor(d.source.id);
+      const w = d.weight || 1;
+      return w >= 6 ? c : d3.interpolateRgb("#0a0a0a", c)(Math.min(w / 6, 0.8));
+    });
+  linkGradients.select("stop:last-child")
+    .attr("stop-color", d => {
+      const c = getColor(d.target.id);
+      const w = d.weight || 1;
+      return w >= 6 ? c : d3.interpolateRgb("#0a0a0a", c)(Math.min(w / 6, 0.8));
+    });
+}
+
 const linkEls = linkG.selectAll("path").data(links).join("path")
-  .attr("stroke", d => {
-    const c = getColor(d.source.id || d.source);
-    const w = d.weight || 1;
-    if (w >= 6) return c;
-    // Stronger blend toward cluster color — visible without hover
-    return d3.interpolateRgb("#0a0a0a", c)(Math.min(w / 6, 0.8));
-  })
+  .attr("stroke", (d, i) => `url(#lg${i})`)
   .attr("stroke-opacity", d => 0.35 + Math.min((d.weight||1) / 8, 1) * 0.55)
   .attr("stroke-width", d => wScale(d.weight))
   .attr("fill", "none")
@@ -266,6 +288,7 @@ const sim = d3.forceSimulation(nodes)
     nodeEls.attr("cx", d => d.x).attr("cy", d => d.y);
     labelEls.attr("x", d => d.x).attr("y", d => d.y);
     updateHulls();
+    updateGradients();
   });
 
 // === DRAG ===
@@ -302,12 +325,7 @@ nodeEls.on("mouseenter", (e, d) => {
   if (!spreadActive) {
     nodeEls.attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5).attr("stroke-opacity", 0.5);
     linkEls.attr("stroke-opacity", d => 0.35 + Math.min((d.weight||1) / 8, 1) * 0.55)
-           .attr("stroke", d => {
-             const c = getColor(d.source.id);
-             const w = d.weight || 1;
-             if (w >= 6) return c;
-             return d3.interpolateRgb("#0a0a0a", c)(Math.min(w / 6, 0.8));
-           });
+           .attr("stroke", (d, i) => `url(#lg${i})`);
     labelEls.attr("fill-opacity", 0.85);
   }
   tooltip.style("display", "none");
@@ -404,12 +422,7 @@ svg.on("click", () => {
     .attr("stroke-opacity", 0.5).attr("stroke-width", 1.5);
   linkEls.transition().duration(400)
     .attr("stroke-opacity", d => 0.35 + Math.min((d.weight||1) / 8, 1) * 0.55)
-    .attr("stroke", d => {
-      const c = getColor(d.source.id);
-      const w = d.weight || 1;
-      if (w >= 6) return c;
-      return d3.interpolateRgb("#0a0a0a", c)(Math.min(w / 6, 0.8));
-    });
+    .attr("stroke", (d, i) => `url(#lg${i})`);
   labelEls.transition().duration(400)
     .attr("fill-opacity", 0.85).attr("fill", "#fff");
 });
