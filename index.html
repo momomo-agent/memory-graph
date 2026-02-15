@@ -146,14 +146,13 @@ const particleG = g.append("g"); // particle layer
 const nodeG = g.append("g");
 const labelG = g.append("g");
 
-// Radial gradients for each node (neuron glow effect)
+// Radial gradients for each node (solid core + soft edge glow)
 nodes.forEach(n => {
   const c = getColor(n.id);
   const rg = defs.append("radialGradient").attr("id", `ng-${n.id.replace(/[^a-zA-Z0-9-]/g, '_')}`);
-  rg.append("stop").attr("offset", "0%").attr("stop-color", "#fff").attr("stop-opacity", 0.9);
-  rg.append("stop").attr("offset", "25%").attr("stop-color", c).attr("stop-opacity", 0.85);
-  rg.append("stop").attr("offset", "70%").attr("stop-color", c).attr("stop-opacity", 0.4);
-  rg.append("stop").attr("offset", "100%").attr("stop-color", c).attr("stop-opacity", 0.05);
+  rg.append("stop").attr("offset", "0%").attr("stop-color", c).attr("stop-opacity", 1);
+  rg.append("stop").attr("offset", "60%").attr("stop-color", c).attr("stop-opacity", 0.85);
+  rg.append("stop").attr("offset", "100%").attr("stop-color", c).attr("stop-opacity", 0.4);
 });
 
 // Bezier curves — gradient for cross-cluster edges
@@ -195,10 +194,8 @@ const linkEls = linkG.selectAll("path").data(links).join("path")
 const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
   .attr("r", d => rScale(degree[d.id] || 1))
   .attr("fill", d => `url(#ng-${d.id.replace(/[^a-zA-Z0-9-]/g, '_')})`)
-  .attr("stroke", d => getColor(d.id))
-  .attr("stroke-width", 1.5)
-  .attr("stroke-opacity", 0.5)
-  .attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5)
+  .attr("stroke", "none")
+  .attr("fill-opacity", d => 0.6 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.4)
   .style("filter", d => `url(#glow${Math.min(d.imp || 1, 5)})`)
   .style("cursor", "grab");
 
@@ -345,8 +342,7 @@ nodeEls.on("mouseenter", (e, d) => {
     return;
   }
   const neighbors = adj[d.id];
-  nodeEls.attr("fill-opacity", n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.08)
-         .attr("stroke-opacity", n => (n.id === d.id || neighbors.has(n.id)) ? 0.8 : 0.05);
+  nodeEls.attr("fill-opacity", n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.08);
   linkEls.attr("stroke-opacity", l => (l.source.id === d.id || l.target.id === d.id) ? 0.9 : 0.03);
   labelEls.attr("fill-opacity", n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.05);
 
@@ -364,7 +360,7 @@ nodeEls.on("mouseenter", (e, d) => {
 })
 .on("mouseleave", () => {
   if (!spreadActive) {
-    nodeEls.attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5).attr("stroke-opacity", 0.5);
+    nodeEls.attr("fill-opacity", d => 0.6 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.4);
     linkEls.attr("stroke-opacity", d => 0.35 + Math.min((d.weight||1) / 8, 1) * 0.55)
            .attr("stroke", (d, i) => `url(#lg${i})`);
     labelEls.attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5)
@@ -424,7 +420,7 @@ nodeEls.on("click", (e, d) => {
 
   // Animate: first dim everything, then light up in waves
   nodeEls.transition().duration(200)
-    .attr("fill-opacity", 0.03).attr("stroke-opacity", 0.02);
+    .attr("fill-opacity", 0.03);
   linkEls.transition().duration(200)
     .attr("stroke-opacity", 0.02);
   labelEls.transition().duration(200)
@@ -436,9 +432,7 @@ nodeEls.on("click", (e, d) => {
     const delay = (1 - norm) * 800; // stronger = sooner
     nodeEls.filter(n => n.id === nid)
       .transition().delay(delay).duration(400)
-      .attr("fill-opacity", 0.3 + norm * 0.7)
-      .attr("stroke-opacity", 0.3 + norm * 0.7)
-      .attr("stroke-width", 1.5 + norm * 3);
+      .attr("fill-opacity", 0.3 + norm * 0.7);
     labelEls.filter(n => n.id === nid)
       .transition().delay(delay).duration(400)
       .attr("fill-opacity", 0.3 + norm * 0.7)
@@ -460,8 +454,7 @@ svg.on("click", () => {
   if (!spreadActive) return;
   spreadActive = false;
   nodeEls.transition().duration(400)
-    .attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5)
-    .attr("stroke-opacity", 0.5).attr("stroke-width", 1.5);
+    .attr("fill-opacity", d => 0.6 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.4);
   linkEls.transition().duration(400)
     .attr("stroke-opacity", d => 0.35 + Math.min((d.weight||1) / 8, 1) * 0.55)
     .attr("stroke", (d, i) => `url(#lg${i})`);
