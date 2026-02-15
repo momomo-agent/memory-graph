@@ -197,7 +197,7 @@ const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
 const labelEls = labelG.selectAll("text").data(nodes, d => d.id).join("text")
   .text(d => d.id)
   .attr("font-size", d => Math.max(8, Math.min(12, rScale(degree[d.id]||1) * 0.7)))
-  .attr("fill", "#fff").attr("fill-opacity", 0.85)
+  .attr("fill", d => getColor(d.id)).attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5)
   .attr("text-anchor", "middle").attr("dy", d => rScale(degree[d.id]||1) + 12)
   .style("pointer-events", "none").style("user-select", "none");
 
@@ -302,11 +302,21 @@ nodeEls.call(d3.drag()
 const tooltip = d3.select("#tooltip");
 
 nodeEls.on("mouseenter", (e, d) => {
+  if (spreadActive) { // 扩散激活中，只显示 tooltip，不改高亮
+    let html = `<div class="tt-name" style="color:${getColor(d.id)}">${d.id}</div>`;
+    html += `<div class="tt-type">${d.type || ''}${nodeCluster[d.id] ? ' · ' + clusterLabels[nodeCluster[d.id]] : ''}</div>`;
+    html += `<div class="tt-meta">连接数: ${degree[d.id] || 0}</div>`;
+    if (d.status) html += `<div class="tt-meta">状态: ${d.status}</div>`;
+    if (d.relation) html += `<div class="tt-meta">关系: ${d.relation}</div>`;
+    if (d.context) html += `<div class="tt-meta">${d.context}</div>`;
+    if (d.deploy) html += `<div class="tt-meta">🔗 ${d.deploy}</div>`;
+    tooltip.html(html).style("display", "block");
+    return;
+  }
   const neighbors = adj[d.id];
   nodeEls.attr("fill-opacity", n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.08)
          .attr("stroke-opacity", n => (n.id === d.id || neighbors.has(n.id)) ? 0.8 : 0.05);
-  linkEls.attr("stroke-opacity", l => (l.source.id === d.id || l.target.id === d.id) ? 0.8 : 0.03)
-         .attr("stroke", l => (l.source.id === d.id || l.target.id === d.id) ? getColor(d.id) : "#333");
+  linkEls.attr("stroke-opacity", l => (l.source.id === d.id || l.target.id === d.id) ? 0.9 : 0.03);
   labelEls.attr("fill-opacity", n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.05);
 
   let html = `<div class="tt-name" style="color:${getColor(d.id)}">${d.id}</div>`;
@@ -326,7 +336,8 @@ nodeEls.on("mouseenter", (e, d) => {
     nodeEls.attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5).attr("stroke-opacity", 0.5);
     linkEls.attr("stroke-opacity", d => 0.35 + Math.min((d.weight||1) / 8, 1) * 0.55)
            .attr("stroke", (d, i) => `url(#lg${i})`);
-    labelEls.attr("fill-opacity", 0.85);
+    labelEls.attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5)
+            .attr("fill", d => getColor(d.id));
   }
   tooltip.style("display", "none");
 });
@@ -400,7 +411,7 @@ nodeEls.on("click", (e, d) => {
     labelEls.filter(n => n.id === nid)
       .transition().delay(delay).duration(400)
       .attr("fill-opacity", 0.3 + norm * 0.7)
-      .attr("fill", norm > 0.3 ? "#fff" : "#ccc");
+      .attr("fill", getColor(nid));
   });
 
   // Light up edges between activated nodes
@@ -424,7 +435,7 @@ svg.on("click", () => {
     .attr("stroke-opacity", d => 0.35 + Math.min((d.weight||1) / 8, 1) * 0.55)
     .attr("stroke", (d, i) => `url(#lg${i})`);
   labelEls.transition().duration(400)
-    .attr("fill-opacity", 0.85).attr("fill", "#fff");
+    .attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5).attr("fill", d => getColor(d.id));
 });
 
 // === HOVER: EDGE ===
