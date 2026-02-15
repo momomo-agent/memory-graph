@@ -144,14 +144,18 @@ const labelG = g.append("g");
 const linkEls = linkG.selectAll("path").data(links).join("path")
   .attr("stroke", d => {
     const w = d.weight || 1;
-    if (w >= 8) return getColor(d.source.id || d.source);
-    if (w >= 5) return "#555";
-    return "#2a2a2a";
+    if (w >= 6) return getColor(d.source.id || d.source);
+    if (w >= 3) {
+      const c = getColor(d.source.id || d.source);
+      // Mix cluster color with dim gray
+      return d3.interpolateRgb("#333", c)(0.4);
+    }
+    return "#222";
   })
-  .attr("stroke-opacity", d => 0.15 + Math.min((d.weight||1) / 10, 1) * 0.55)
+  .attr("stroke-opacity", d => 0.2 + Math.min((d.weight||1) / 10, 1) * 0.7)
   .attr("stroke-width", d => wScale(d.weight))
   .attr("fill", "none")
-  .style("filter", d => (d.weight || 1) >= 7 ? "url(#glow2)" : "none");
+  .style("filter", d => (d.weight || 1) >= 6 ? "url(#glow3)" : "none");
 
 // Pulse dots on strong edges (weight >= 5)
 const strongLinks = links.filter(l => l.weight >= 5);
