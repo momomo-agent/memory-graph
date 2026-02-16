@@ -11,7 +11,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 #search {
-  position: fixed; top: 16px; right: 16px; z-index: 10;
+  position: fixed; top: 16px; left: 16px; z-index: 10;
   background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
   border-radius: 8px; padding: 8px 14px; color: #ccc; font-size: 13px;
   width: 220px; outline: none; backdrop-filter: blur(8px);
@@ -36,8 +36,18 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 #legend .item { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
 #legend .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 #stats {
-  position: fixed; bottom: 16px; right: 16px; z-index: 10;
+  position: fixed; top: 16px; right: 16px; z-index: 10;
   color: #777; font-size: 11px; text-align: right;
+}
+#controls {
+  position: fixed; bottom: 16px; right: 16px; z-index: 10;
+  color: #777; font-size: 11px; text-align: right; line-height: 1.8;
+}
+#link-tooltip {
+  position: fixed; pointer-events: none; z-index: 20;
+  background: rgba(20,20,20,0.92); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px; padding: 8px 12px; color: #ddd; font-size: 12px;
+  line-height: 1.5; backdrop-filter: blur(12px); display: none;
 }
 #graph-container { width: 100vw; height: 100vh; }
 </style>
@@ -47,6 +57,8 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="tooltip"></div>
 <div id="legend"></div>
 <div id="stats"></div>
+<div id="controls">鼠标拖拽旋转 · 滚轮缩放 · 右键平移</div>
+<div id="link-tooltip"></div>
 <div id="graph-container"></div>
 
 <script>
@@ -105,6 +117,54 @@ links.forEach(l => { adj[l.source].add(l.target); adj[l.target].add(l.source); }
 const clusterNodeMap = {};
 graphData.clusters.forEach(c => { clusterNodeMap[c.id] = c.nodes; });
 
+// === SPREAD ACTIVATION DATA ===
+const spreadAdj = {};
+graphData.edges.forEach(e => {
+  if (!spreadAdj[e.from]) spreadAdj[e.from] = [];
+  if (!spreadAdj[e.to]) spreadAdj[e.to] = [];
+  spreadAdj[e.from].push({ target: e.to, w: e.w });
+  spreadAdj[e.to].push({ target: e.from, w: e.w });
+});
+const vizDegree = degree;
+const degValues = Object.values(vizDegree).sort((a,b) => a - b);
+const vizMedianDeg = degValues[Math.floor(degValues.length / 2)] || 1;
+
+function spreadActivation(seed, maxDepth=3, decay=0.5, threshold=0.1) {
+  const act = {}; act[seed] = 1.0;
+  const queue = [{ id: seed, energy: 1.0, depth: 0 }];
+  while (queue.length) {
+    const { id, energy, depth } = queue.shift();
+    if (depth >= maxDepth) continue;
+    const nb = spreadAdj[id] || [];
+    const maxW = Math.max(...nb.map(n => n.w), 1);
+    for (const n of nb) {
+      const targetDeg = vizDegree[n.target] || 1;
+      const hubPenalty = targetDeg > vizMedianDeg * 2 ? vizMedianDeg / targetDeg : 1.0;
+      const t = energy * (n.w / maxW) * decay * hubPenalty;
+      if (t < 0.005) continue;
+      act[n.target] = (act[n.target] || 0) + t;
+      if (t >= threshold * 0.3) queue.push({ id: n.target, energy: t, depth: depth + 1 });
+    }
+  }
+  return act;
+}
+
+// Color blending helper
+function blendColors(c1, c2) {
+  const a = new THREE.Color(c1), b = new THREE.Color(c2);
+  return new THREE.Color((a.r+b.r)/2, (a.g+b.g)/2, (a.b+b.b)/2);
+}
+
+// Breathing phase per node
+nodes.forEach(n => { n.__breathPhase = Math.random() * Math.PI * 2; });
+
+// Spread activation state
+let spreadActive = false;
+let spreadTimeouts = [];
+
+// Particle flow data for strong links
+const flowParticles = [];
+
 // === 3D FORCE GRAPH ===
 const container = document.getElementById('graph-container');
 let hoveredNode = null;
@@ -155,38 +215,60 @@ const Graph = ForceGraph3D()(container)
     return group;
   })
   .nodeThreeObjectExtend(false)
-  // Link appearance
+  // Link appearance — blended color for cross-cluster edges
   .linkColor(link => {
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-    return getColor(srcId);
+    const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+    const srcCluster = nodeCluster[srcId];
+    const tgtCluster = nodeCluster[tgtId];
+    if (srcCluster === tgtCluster) return getColor(srcId);
+    return '#' + blendColors(getColor(srcId), getColor(tgtId)).getHexString();
   })
   .linkWidth(link => 0.2 + Math.min((link.weight || 1) / 10, 1) * 1.5)
   .linkOpacity(0.35)
+  .linkCurvature(0.12)
+  .linkCurveRotation(link => {
+    const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+    const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+    return (srcId + tgtId).length * 0.5;
+  })
   // Force layout tuning
   .d3AlphaDecay(0.02)
   .d3VelocityDecay(0.3)
-  // Hover
+  // Node hover
   .onNodeHover(node => {
     container.style.cursor = node ? 'pointer' : 'default';
     hoveredNode = node;
-    updateHighlight();
+    if (!spreadActive) updateHighlight();
     if (!node) {
       document.getElementById('tooltip').style.display = 'none';
     }
   })
-  // Click
-  .onNodeClick(node => {
-    if (clickedNode === node) {
-      clickedNode = null;
+  // Link hover tooltip
+  .onLinkHover(link => {
+    const lt = document.getElementById('link-tooltip');
+    if (link) {
+      const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+      const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+      lt.innerHTML = srcId + ' ↔ ' + tgtId + '<br>weight: ' + (link.weight || 1);
+      lt.style.display = 'block';
     } else {
-      clickedNode = node;
+      lt.style.display = 'none';
     }
-    updateHighlight();
+  })
+  // Click — spread activation
+  .onNodeClick(node => {
+    if (spreadActive && clickedNode === node) {
+      resetSpread();
+      return;
+    }
+    clickedNode = node;
+    triggerSpreadActivation(node);
     showTooltip(node);
   })
   .onBackgroundClick(() => {
+    resetSpread();
     clickedNode = null;
-    updateHighlight();
     document.getElementById('tooltip').style.display = 'none';
   });
 
@@ -230,9 +312,10 @@ Graph.d3Force('cluster', alpha => {
   });
 });
 
-// Highlight logic
+// === HIGHLIGHT (hover only, when spread not active) ===
 function updateHighlight() {
-  const focusNode = clickedNode || hoveredNode;
+  if (spreadActive) return;
+  const focusNode = hoveredNode;
   const neighbors = focusNode ? adj[focusNode.id] : null;
 
   nodes.forEach(node => {
@@ -240,29 +323,24 @@ function updateHighlight() {
     const mat = node.__sphere.material;
     const label = node.__label;
     if (!focusNode) {
-      // Normal state
       mat.opacity = 0.85;
       mat.emissiveIntensity = 0.3;
       if (label) label.material.opacity = 0.7;
     } else if (node.id === focusNode.id) {
-      // Focused node
       mat.opacity = 1.0;
       mat.emissiveIntensity = 0.8;
       if (label) label.material.opacity = 1.0;
     } else if (neighbors && neighbors.has(node.id)) {
-      // Neighbor
       mat.opacity = 0.9;
       mat.emissiveIntensity = 0.5;
       if (label) label.material.opacity = 0.85;
     } else {
-      // Dimmed
       mat.opacity = 0.08;
       mat.emissiveIntensity = 0.05;
       if (label) label.material.opacity = 0.05;
     }
   });
 
-  // Update link visibility
   const gData = Graph.graphData();
   gData.links.forEach(link => {
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
@@ -278,7 +356,99 @@ function updateHighlight() {
   Graph.linkOpacity(link => link.__opacity !== undefined ? link.__opacity : 0.35);
 }
 
-// Tooltip
+// === SPREAD ACTIVATION (wave propagation) ===
+function triggerSpreadActivation(node) {
+  spreadActive = true;
+  spreadTimeouts.forEach(t => clearTimeout(t));
+  spreadTimeouts = [];
+
+  const act = spreadActivation(node.id);
+  const maxAct = Math.max(...Object.values(act));
+
+  // BFS depth from seed
+  const depthMap = {}; depthMap[node.id] = 0;
+  const bfsQueue = [node.id];
+  const visited = new Set([node.id]);
+  while (bfsQueue.length) {
+    const cur = bfsQueue.shift();
+    const nb = adj[cur] || new Set();
+    nb.forEach(nid => {
+      if (!visited.has(nid) && act[nid]) {
+        visited.add(nid);
+        depthMap[nid] = depthMap[cur] + 1;
+        bfsQueue.push(nid);
+      }
+    });
+  }
+  const waveMs = 600;
+
+  // Dim all nodes immediately
+  nodes.forEach(n => {
+    if (!n.__sphere) return;
+    n.__sphere.material.opacity = 0.03;
+    n.__sphere.material.emissiveIntensity = 0.02;
+    if (n.__label) n.__label.material.opacity = 0.03;
+  });
+  // Dim all links
+  const gData = Graph.graphData();
+  gData.links.forEach(link => { link.__opacity = 0.02; });
+  Graph.linkOpacity(link => link.__opacity !== undefined ? link.__opacity : 0.02);
+
+  // Wave: light up nodes by depth
+  const actSet = new Set(Object.keys(act));
+  Object.entries(act).forEach(([nid, energy]) => {
+    const norm = energy / maxAct;
+    const hop = depthMap[nid] || 0;
+    const delay = 250 + hop * waveMs;
+    const tid = setTimeout(() => {
+      const n = nodes.find(x => x.id === nid);
+      if (!n || !n.__sphere) return;
+      n.__sphere.material.opacity = 0.3 + norm * 0.7;
+      n.__sphere.material.emissiveIntensity = 0.2 + norm * 0.6;
+      if (n.__label) n.__label.material.opacity = 0.3 + norm * 0.7;
+    }, delay);
+    spreadTimeouts.push(tid);
+  });
+
+  // Wave: light up edges
+  gData.links.forEach(link => {
+    const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+    const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+    if (actSet.has(srcId) && actSet.has(tgtId)) {
+      const srcDepth = depthMap[srcId] || 0;
+      const tgtDepth = depthMap[tgtId] || 0;
+      const edgeHop = Math.min(srcDepth, tgtDepth);
+      const delay = 250 + edgeHop * waveMs + waveMs * 0.3;
+      const en = Math.min(act[srcId]||0, act[tgtId]||0) / maxAct;
+      const tid = setTimeout(() => {
+        link.__opacity = 0.2 + en * 0.7;
+        Graph.linkOpacity(l => l.__opacity !== undefined ? l.__opacity : 0.02);
+      }, delay);
+      spreadTimeouts.push(tid);
+    }
+  });
+}
+
+function resetSpread() {
+  spreadTimeouts.forEach(t => clearTimeout(t));
+  spreadTimeouts = [];
+  spreadActive = false;
+  clickedNode = null;
+
+  // Restore all nodes
+  nodes.forEach(n => {
+    if (!n.__sphere) return;
+    n.__sphere.material.opacity = 0.85;
+    n.__sphere.material.emissiveIntensity = 0.3;
+    if (n.__label) n.__label.material.opacity = 0.7;
+  });
+  // Restore all links
+  const gData = Graph.graphData();
+  gData.links.forEach(link => { link.__opacity = 0.35; });
+  Graph.linkOpacity(link => 0.35);
+}
+
+// === TOOLTIP ===
 function showTooltip(node) {
   if (!node) return;
   const tooltip = document.getElementById('tooltip');
@@ -295,25 +465,17 @@ function showTooltip(node) {
   tooltip.style.top = '60px';
 }
 
-// Track mouse for tooltip positioning
+// Track mouse for link tooltip positioning
 container.addEventListener('mousemove', e => {
+  const lt = document.getElementById('link-tooltip');
+  if (lt.style.display === 'block') {
+    lt.style.left = (e.clientX + 14) + 'px';
+    lt.style.top = (e.clientY - 10) + 'px';
+  }
   const tooltip = document.getElementById('tooltip');
-  if (tooltip.style.display === 'block' && hoveredNode && !clickedNode) {
+  if (tooltip.style.display === 'block' && hoveredNode && !spreadActive) {
     tooltip.style.left = (e.clientX + 14) + 'px';
     tooltip.style.top = (e.clientY - 10) + 'px';
-  }
-});
-
-// Hover tooltip
-const origHover = Graph.onNodeHover();
-Graph.onNodeHover(node => {
-  container.style.cursor = node ? 'pointer' : 'default';
-  hoveredNode = node;
-  updateHighlight();
-  if (node && !clickedNode) {
-    showTooltip(node);
-  } else if (!node && !clickedNode) {
-    document.getElementById('tooltip').style.display = 'none';
   }
 });
 
@@ -323,7 +485,7 @@ let searchQuery = '';
 searchInput.addEventListener('input', () => {
   searchQuery = searchInput.value.trim().toLowerCase();
   if (!searchQuery) {
-    clickedNode = null;
+    resetSpread();
     hoveredNode = null;
     updateHighlight();
     return;
@@ -347,7 +509,6 @@ searchInput.addEventListener('input', () => {
   });
 });
 
-// Prevent orbit controls from capturing when typing in search
 searchInput.addEventListener('keydown', e => e.stopPropagation());
 
 // === LEGEND ===
@@ -361,7 +522,7 @@ legendDiv.innerHTML = legendItems.map(([l, c]) =>
 // === STATS ===
 document.getElementById('stats').textContent = nodes.length + ' nodes · ' + links.length + ' edges';
 
-// === CLUSTER HULLS (transparent enclosing spheres) ===
+// === CLUSTER HULLS ===
 const hullMeshes = {};
 function updateClusterHulls() {
   Object.entries(clusterNodeMap).forEach(([cid, nids]) => {
@@ -370,12 +531,9 @@ function updateClusterHulls() {
       return n && n.x !== undefined ? n : null;
     }).filter(Boolean);
     if (pts.length < 2) return;
-
     const cx = pts.reduce((s, n) => s + n.x, 0) / pts.length;
     const cy = pts.reduce((s, n) => s + n.y, 0) / pts.length;
     const cz = pts.reduce((s, n) => s + n.z, 0) / pts.length;
-
-    // Radius = max distance from center + padding
     let maxR = 0;
     pts.forEach(n => {
       const dx = n.x - cx, dy = n.y - cy, dz = n.z - cz;
@@ -383,16 +541,12 @@ function updateClusterHulls() {
       if (r > maxR) maxR = r;
     });
     maxR += 15;
-
     const color = clusterColors[cid] || '#666';
     if (!hullMeshes[cid]) {
       const geo = new THREE.SphereGeometry(1, 24, 16);
       const mat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(color),
-        transparent: true,
-        opacity: 0.04,
-        side: THREE.BackSide,
-        depthWrite: false
+        color: new THREE.Color(color), transparent: true, opacity: 0.04,
+        side: THREE.BackSide, depthWrite: false
       });
       const mesh = new THREE.Mesh(geo, mat);
       Graph.scene().add(mesh);
@@ -404,27 +558,19 @@ function updateClusterHulls() {
   });
 }
 
-// Update hulls periodically during simulation
 let hullInterval = setInterval(() => {
-  if (nodes[0] && nodes[0].x !== undefined) {
-    updateClusterHulls();
-  }
+  if (nodes[0] && nodes[0].x !== undefined) updateClusterHulls();
 }, 500);
-
-// Also update after simulation cools
 setTimeout(() => {
   updateClusterHulls();
   clearInterval(hullInterval);
-  // Keep updating less frequently
   setInterval(updateClusterHulls, 2000);
 }, 8000);
 
 // === LIGHTING ===
 setTimeout(() => {
   const scene = Graph.scene();
-  // Ambient light
   scene.add(new THREE.AmbientLight(0x444466, 1.5));
-  // Point lights for depth
   const pl1 = new THREE.PointLight(0x6666ff, 0.8, 500);
   pl1.position.set(100, 100, 100);
   scene.add(pl1);
@@ -432,6 +578,70 @@ setTimeout(() => {
   pl2.position.set(-100, -50, -100);
   scene.add(pl2);
 }, 100);
+
+// === PARTICLE FLOW (strong links w >= 5) ===
+const particleMeshes = [];
+setTimeout(() => {
+  const scene = Graph.scene();
+  links.forEach(link => {
+    if ((link.weight || 0) < 5) return;
+    const count = Math.min(Math.floor(link.weight / 3), 3);
+    for (let i = 0; i < count; i++) {
+      const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+      const color = new THREE.Color(getColor(srcId));
+      const geo = new THREE.SphereGeometry(0.3, 8, 6);
+      const mat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0, depthWrite: false
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      scene.add(mesh);
+      particleMeshes.push({
+        mesh, link, t: Math.random(), speed: 0.001 + Math.random() * 0.002, color
+      });
+    }
+  });
+}, 200);
+
+// === ANIMATION LOOP (breathing + particles) ===
+function animate(time) {
+  requestAnimationFrame(animate);
+  const t = time * 0.001;
+
+  // Breathing animation — ±4% scale pulsation
+  if (!spreadActive) {
+    nodes.forEach(node => {
+      if (!node.__sphere) return;
+      const phase = node.__breathPhase || 0;
+      const breathScale = 1 + 0.04 * Math.sin(t * 1.5 + phase);
+      node.__sphere.scale.set(breathScale, breathScale, breathScale);
+    });
+  }
+
+  // Particle flow along strong edges
+  particleMeshes.forEach(p => {
+    p.t += p.speed;
+    if (p.t > 1) p.t -= 1;
+
+    const src = typeof p.link.source === 'object' ? p.link.source : null;
+    const tgt = typeof p.link.target === 'object' ? p.link.target : null;
+    if (!src || !tgt || src.x === undefined || tgt.x === undefined) {
+      p.mesh.visible = false;
+      return;
+    }
+
+    // Lerp position along edge
+    const x = src.x + (tgt.x - src.x) * p.t;
+    const y = src.y + (tgt.y - src.y) * p.t;
+    const z = src.z + (tgt.z - src.z) * p.t;
+    p.mesh.position.set(x, y, z);
+
+    // Fade in/out near endpoints
+    const fade = Math.min(p.t, 1 - p.t) * 4;
+    p.mesh.material.opacity = Math.min(fade, 0.7);
+    p.mesh.visible = true;
+  });
+}
+requestAnimationFrame(animate);
 
 // === WINDOW RESIZE ===
 window.addEventListener('resize', () => {
