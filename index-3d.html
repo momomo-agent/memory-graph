@@ -462,7 +462,10 @@ function triggerSpreadActivation(node) {
   });
   gData.links.forEach((link, i) => {
     if (litLinks.has(i)) return;
-    if (link.__lineObj) link.__lineObj.material.opacity = 0;
+    if (link.__lineObj) {
+      link.__lineObj.material.opacity = 0;
+      link.__lineObj.visible = false; // hide completely so library can't override opacity
+    }
   });
 
   // Light up seed node instantly
@@ -642,7 +645,7 @@ function restoreAll() {
     if (n.__label) n.__label.material.opacity = 0.85;
   });
   const gData = Graph.graphData();
-  gData.links.forEach(link => { if (link.__lineObj) link.__lineObj.material.opacity = 0.4; });
+  gData.links.forEach(link => { if (link.__lineObj) { link.__lineObj.visible = true; link.__lineObj.material.opacity = 0.4; } });
   clickedNode = null;
   document.getElementById('tooltip').style.display = 'none';
 }
@@ -662,6 +665,7 @@ function lightLink(link) {
   if (!link) return;
   const doLight = () => {
     if (link.__lineObj) {
+      link.__lineObj.visible = true;
       link.__lineObj.material.opacity = 1.0;
       const gData = Graph.graphData();
       const li = gData.links.indexOf(link);
@@ -886,8 +890,15 @@ function animate(time) {
   requestAnimationFrame(animate);
   const t = time * 0.001;
 
-  // No continuous dim — initial dim in triggerSpreadActivation is sufficient
-  // Late-created __lineObj will inherit library default but that's acceptable
+  // During spread: hide any late-created __lineObj (uses visible, not opacity — no animation conflict)
+  if (spreadActive) {
+    const gData = Graph.graphData();
+    gData.links.forEach((link, i) => {
+      if (!link.__lineObj) return;
+      if (litLinks.has(i)) return;
+      if (link.__lineObj.visible) link.__lineObj.visible = false;
+    });
+  }
 
   // Breathing animation — ±4% scale pulsation
   if (!spreadActive) {
