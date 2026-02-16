@@ -843,6 +843,26 @@ function animate(time) {
   requestAnimationFrame(animate);
   const t = time * 0.001;
 
+  // During spread: continuously enforce dim on non-lit links/nodes
+  // This catches __lineObj created after the initial dim pass
+  if (spreadActive) {
+    const gData = Graph.graphData();
+    gData.links.forEach((link, i) => {
+      if (!link.__lineObj) return;
+      if (!litLinks.has(i) && link.__lineObj.material.opacity > 0) {
+        link.__lineObj.material.opacity = 0;
+      }
+    });
+    nodes.forEach(n => {
+      if (!n.__sphere || litNodes.has(n.id)) return;
+      if (n.__sphere.material.opacity > 0.05) {
+        n.__sphere.material.opacity = 0.03;
+        n.__sphere.material.emissiveIntensity = 0.01;
+        if (n.__label) n.__label.material.opacity = 0.02;
+      }
+    });
+  }
+
   // Breathing animation — ±4% scale pulsation
   if (!spreadActive) {
     nodes.forEach(node => {
