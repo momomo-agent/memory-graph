@@ -567,6 +567,11 @@ setTimeout(() => {
   setInterval(updateClusterHulls, 2000);
 }, 8000);
 
+// === INITIAL CAMERA: zoom to fit after layout stabilizes ===
+setTimeout(() => {
+  Graph.zoomToFit(400, 50);
+}, 3000);
+
 // === LIGHTING ===
 setTimeout(() => {
   const scene = Graph.scene();
