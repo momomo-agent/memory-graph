@@ -340,28 +340,44 @@ Graph.d3Force('cluster', alpha => {
 function updateHighlight() {
   if (spreadActive) return;
   const focusNode = hoveredNode;
-  const neighbors = focusNode ? adj[focusNode.id] : null;
+
+  if (!focusNode) {
+    // No hover — restore all to default
+    nodes.forEach(node => {
+      if (!node.__sphere) return;
+      node.__sphere.material.opacity = 0.85;
+      node.__sphere.material.emissiveIntensity = 0.3;
+      if (node.__label) node.__label.material.opacity = 0.85;
+    });
+    const gData = Graph.graphData();
+    gData.links.forEach(link => {
+      if (link.__lineObj) link.__lineObj.material.opacity = 0.4;
+    });
+    return;
+  }
+
+  // Use spread activation for hover too
+  const act = spreadActivation(focusNode.id);
+  const maxAct = Math.max(...Object.values(act));
+  const actSet = new Set(Object.keys(act));
 
   nodes.forEach(node => {
     if (!node.__sphere) return;
     const mat = node.__sphere.material;
     const label = node.__label;
-    if (!focusNode) {
-      mat.opacity = 0.85;
-      mat.emissiveIntensity = 0.3;
-      if (label) label.material.opacity = 0.85;
-    } else if (node.id === focusNode.id) {
+    if (node.id === focusNode.id) {
       mat.opacity = 1.0;
-      mat.emissiveIntensity = 0.8;
+      mat.emissiveIntensity = 1.0;
       if (label) label.material.opacity = 1.0;
-    } else if (neighbors && neighbors.has(node.id)) {
-      mat.opacity = 0.9;
-      mat.emissiveIntensity = 0.5;
-      if (label) label.material.opacity = 0.85;
+    } else if (actSet.has(node.id)) {
+      const energy = (act[node.id] || 0) / maxAct;
+      mat.opacity = 0.3 + energy * 0.7;
+      mat.emissiveIntensity = 0.2 + energy * 0.6;
+      if (label) label.material.opacity = 0.3 + energy * 0.7;
     } else {
-      mat.opacity = 0.08;
-      mat.emissiveIntensity = 0.05;
-      if (label) label.material.opacity = 0.05;
+      mat.opacity = 0.05;
+      mat.emissiveIntensity = 0.02;
+      if (label) label.material.opacity = 0.03;
     }
   });
 
@@ -370,10 +386,9 @@ function updateHighlight() {
     if (!link.__lineObj) return;
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-    if (!focusNode) {
-      link.__lineObj.material.opacity = 0.4;
-    } else if (srcId === focusNode.id || tgtId === focusNode.id) {
-      link.__lineObj.material.opacity = 0.8;
+    if (actSet.has(srcId) && actSet.has(tgtId)) {
+      const e = Math.min((act[srcId] || 0), (act[tgtId] || 0)) / maxAct;
+      link.__lineObj.material.opacity = 0.2 + e * 0.6;
     } else {
       link.__lineObj.material.opacity = 0.01;
     }
