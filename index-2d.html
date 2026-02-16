@@ -143,9 +143,24 @@ const defs = svg.append("defs");
 
 const g = svg.append("g");
 
-// zoom
-const zoom = d3.zoom().scaleExtent([0.15, 5]).on("zoom", e => g.attr("transform", e.transform));
+// zoom — trackpad: two-finger swipe = pan, pinch = zoom
+const zoom = d3.zoom().scaleExtent([0.15, 5]).filter(e => {
+  // Allow all non-wheel events (mouse drag, etc.)
+  if (e.type !== 'wheel') return true;
+  // Wheel with ctrlKey = trackpad pinch → allow as zoom
+  if (e.ctrlKey) return true;
+  // Regular wheel (two-finger swipe) → block D3 zoom, we handle it as pan below
+  return false;
+}).on("zoom", e => g.attr("transform", e.transform));
 svg.call(zoom);
+
+// Trackpad two-finger swipe → pan
+svg.node().addEventListener('wheel', e => {
+  if (e.ctrlKey) return; // pinch handled by D3 zoom
+  e.preventDefault();
+  const t = d3.zoomTransform(svg.node());
+  svg.call(zoom.transform, t.translate(-e.deltaX / t.k, -e.deltaY / t.k));
+}, { passive: false });
 
 // weight → stroke width
 const wScale = d3.scaleLinear().domain([1, 10]).range([0.5, 4]).clamp(true);
