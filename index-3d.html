@@ -216,22 +216,40 @@ const Graph = ForceGraph3D()(container)
   })
   .nodeThreeObjectExtend(false)
   // Link appearance — blended color for cross-cluster edges
-  .linkColor(link => {
+  .linkThreeObjectExtend(true)
+  .linkThreeObject(link => {
+    // Custom line with vertex colors for gradient
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-    const srcCluster = nodeCluster[srcId];
-    const tgtCluster = nodeCluster[tgtId];
-    if (srcCluster === tgtCluster) return getColor(srcId);
-    return '#' + blendColors(getColor(srcId), getColor(tgtId)).getHexString();
+    const srcColor = new THREE.Color(getColor(srcId));
+    const tgtColor = new THREE.Color(getColor(tgtId));
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute([0,0,0, 0,0,0], 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute([
+      srcColor.r, srcColor.g, srcColor.b,
+      tgtColor.r, tgtColor.g, tgtColor.b
+    ], 3));
+    const w = link.weight || 1;
+    const defaultOpacity = 0.03 + Math.min(w / 12, 1) * 0.2;
+    const mat = new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, opacity: defaultOpacity,
+      depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    const line = new THREE.Line(geo, mat);
+    link.__line = line;
+    link.__defaultOpacity = defaultOpacity;
+    return line;
   })
-  .linkWidth(link => 0.08 + Math.min((link.weight || 1) / 14, 1) * 0.8)
-  .linkOpacity(link => 0.03 + Math.min((link.weight || 1) / 12, 1) * 0.2)
-  .linkCurvature(0.12)
-  .linkCurveRotation(link => {
-    const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-    const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-    return (srcId + tgtId).length * 0.5;
+  .linkPositionUpdate((line, { start, end }) => {
+    if (!line || !line.geometry) return;
+    const pos = line.geometry.attributes.position;
+    if (!pos) return;
+    pos.array[0] = start.x; pos.array[1] = start.y; pos.array[2] = start.z;
+    pos.array[3] = end.x;   pos.array[4] = end.y;   pos.array[5] = end.z;
+    pos.needsUpdate = true;
   })
+  .linkWidth(0) // disable default cylinder (we use custom Line)
+  .linkOpacity(1) // let our material handle opacity
   // Force layout tuning
   .d3AlphaDecay(0.02)
   .d3VelocityDecay(0.3)
@@ -343,17 +361,17 @@ function updateHighlight() {
 
   const gData = Graph.graphData();
   gData.links.forEach(link => {
+    if (!link.__line) return;
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
     if (!focusNode) {
-      delete link.__opacity;
+      link.__line.material.opacity = link.__defaultOpacity || 0.1;
     } else if (srcId === focusNode.id || tgtId === focusNode.id) {
-      link.__opacity = 0.8;
+      link.__line.material.opacity = 0.8;
     } else {
-      link.__opacity = 0.005;
+      link.__line.material.opacity = 0.005;
     }
   });
-  Graph.linkOpacity(link => link.__opacity !== undefined ? link.__opacity : 0.03 + Math.min((link.weight || 1) / 12, 1) * 0.2);
 }
 
 // === SPREAD ACTIVATION (wave propagation) ===
@@ -391,8 +409,7 @@ function triggerSpreadActivation(node) {
   });
   // Dim all links
   const gData = Graph.graphData();
-  gData.links.forEach(link => { link.__opacity = 0.005; });
-  Graph.linkOpacity(link => link.__opacity !== undefined ? link.__opacity : 0.005);
+  gData.links.forEach(link => { if (link.__line) link.__line.material.opacity = 0.003; });
 
   // Wave: light up nodes by depth
   const actSet = new Set(Object.keys(act));
@@ -412,6 +429,7 @@ function triggerSpreadActivation(node) {
 
   // Wave: light up edges
   gData.links.forEach(link => {
+    if (!link.__line) return;
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
     if (actSet.has(srcId) && actSet.has(tgtId)) {
@@ -421,8 +439,7 @@ function triggerSpreadActivation(node) {
       const delay = 250 + edgeHop * waveMs + waveMs * 0.3;
       const en = Math.min(act[srcId]||0, act[tgtId]||0) / maxAct;
       const tid = setTimeout(() => {
-        link.__opacity = 0.2 + en * 0.7;
-        Graph.linkOpacity(l => l.__opacity !== undefined ? l.__opacity : 0.02);
+        if (link.__line) link.__line.material.opacity = 0.3 + en * 0.7;
       }, delay);
       spreadTimeouts.push(tid);
     }
@@ -444,8 +461,7 @@ function resetSpread() {
   });
   // Restore all links
   const gData = Graph.graphData();
-  gData.links.forEach(link => { delete link.__opacity; });
-  Graph.linkOpacity(link => 0.03 + Math.min((link.weight || 1) / 12, 1) * 0.2);
+  gData.links.forEach(link => { if (link.__line) link.__line.material.opacity = link.__defaultOpacity || 0.1; });
 }
 
 // === TOOLTIP ===
@@ -681,6 +697,51 @@ function animate(time) {
   });
 }
 requestAnimationFrame(animate);
+
+// === KEYBOARD CONTROLS (WASD + Arrow keys) ===
+const keysDown = new Set();
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  keysDown.add(e.key);
+});
+window.addEventListener('keyup', e => keysDown.delete(e.key));
+
+function tickKeyboard() {
+  requestAnimationFrame(tickKeyboard);
+  if (keysDown.size === 0) return;
+  const cam = Graph.camera();
+  const speed = 2;
+  const rotSpeed = 0.02;
+  // WASD = pan (move camera target)
+  const right = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  const forward = new THREE.Vector3();
+  cam.getWorldDirection(forward);
+  right.crossVectors(forward, up).normalize();
+  const panForward = new THREE.Vector3().crossVectors(up, right).normalize();
+
+  let dx = 0, dy = 0, dz = 0;
+  if (keysDown.has('w') || keysDown.has('W')) { dx += panForward.x * speed; dy += panForward.y * speed; dz += panForward.z * speed; }
+  if (keysDown.has('s') || keysDown.has('S')) { dx -= panForward.x * speed; dy -= panForward.y * speed; dz -= panForward.z * speed; }
+  if (keysDown.has('a') || keysDown.has('A')) { dx -= right.x * speed; dy -= right.y * speed; dz -= right.z * speed; }
+  if (keysDown.has('d') || keysDown.has('D')) { dx += right.x * speed; dy += right.y * speed; dz += right.z * speed; }
+  // Arrow keys = orbit rotation
+  const controls = Graph.controls();
+  if (keysDown.has('ArrowLeft'))  { controls.rotateLeft(rotSpeed); }
+  if (keysDown.has('ArrowRight')) { controls.rotateLeft(-rotSpeed); }
+  if (keysDown.has('ArrowUp'))    { controls.rotateUp(rotSpeed); }
+  if (keysDown.has('ArrowDown'))  { controls.rotateUp(-rotSpeed); }
+  // Q/E = zoom
+  if (keysDown.has('q') || keysDown.has('Q')) { controls.dollyIn(1.02); }
+  if (keysDown.has('e') || keysDown.has('E')) { controls.dollyOut(1.02); }
+
+  if (dx || dy || dz) {
+    const pos = Graph.cameraPosition();
+    Graph.cameraPosition({ x: pos.x + dx, y: pos.y + dy, z: pos.z + dz });
+  }
+  controls.update();
+}
+requestAnimationFrame(tickKeyboard);
 
 // === WINDOW RESIZE ===
 window.addEventListener('resize', () => {
