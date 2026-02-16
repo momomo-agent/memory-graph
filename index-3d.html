@@ -503,6 +503,8 @@ function triggerSpreadActivation(node) {
         duration: pulseTravelMs,
         energy,
         targetNodeId: nid,
+        targetNode: tgtNode, // direct reference — no find() needed later
+        sourceNode: srcNode,
         link,
         done: false
       });
@@ -521,22 +523,36 @@ function triggerSpreadActivation(node) {
   const fallbackTid = setTimeout(() => {
     // Light all activated nodes
     Object.keys(act).forEach(nid => {
-      if (litNodes.has(nid)) return;
       const n = nodes.find(x => x.id === nid);
       if (!n || !n.__sphere) return;
-      litNodes.add(nid);
-      n.__sphere.material.opacity = 1.0;
-      n.__sphere.material.emissiveIntensity = 0.6;
-      if (n.__label) n.__label.material.opacity = 1.0;
+      if (!litNodes.has(nid)) {
+        litNodes.add(nid);
+        n.__sphere.material.opacity = 1.0;
+        n.__sphere.material.emissiveIntensity = 0.6;
+        if (n.__label) n.__label.material.opacity = 1.0;
+      }
     });
-    // Light all links between activated nodes
+    // Light all links between activated nodes, and ensure both endpoints are lit
     gData.links.forEach((link, i) => {
-      if (litLinks.has(i)) return;
       const sid = typeof link.source === 'object' ? link.source.id : link.source;
       const tid2 = typeof link.target === 'object' ? link.target.id : link.target;
-      if (litNodes.has(sid) && litNodes.has(tid2) && link.__lineObj) {
-        litLinks.add(i);
-        link.__lineObj.material.opacity = 0.8;
+      if ((litNodes.has(sid) || act[sid]) && (litNodes.has(tid2) || act[tid2])) {
+        if (!litLinks.has(i) && link.__lineObj) {
+          litLinks.add(i);
+          link.__lineObj.material.opacity = 0.8;
+        }
+        // Ensure both endpoint nodes are lit
+        [sid, tid2].forEach(eid => {
+          if (!litNodes.has(eid)) {
+            const en = nodes.find(x => x.id === eid);
+            if (en && en.__sphere) {
+              litNodes.add(eid);
+              en.__sphere.material.opacity = 1.0;
+              en.__sphere.material.emissiveIntensity = 0.6;
+              if (en.__label) en.__label.material.opacity = 1.0;
+            }
+          }
+        });
       }
     });
   }, fallbackDelay);
@@ -590,13 +606,21 @@ function animatePulses(now) {
         p.link.__lineObj.material.opacity = 1.0;
       }
 
-      // Light up target node — search by id to be safe
-      const tgtNode = nodes.find(x => x.id === p.targetNodeId);
+      // Light up target node using direct reference
+      const tgtNode = p.targetNode;
       if (tgtNode && tgtNode.__sphere) {
         litNodes.add(tgtNode.id);
         tgtNode.__sphere.material.opacity = 1.0;
         tgtNode.__sphere.material.emissiveIntensity = 0.6 + p.energy * 0.4;
         if (tgtNode.__label) tgtNode.__label.material.opacity = 1.0;
+      }
+      // Also ensure source node stays lit
+      const srcNode = p.sourceNode;
+      if (srcNode && srcNode.__sphere && !litNodes.has(srcNode.id)) {
+        litNodes.add(srcNode.id);
+        srcNode.__sphere.material.opacity = 1.0;
+        srcNode.__sphere.material.emissiveIntensity = 0.6;
+        if (srcNode.__label) srcNode.__label.material.opacity = 1.0;
       }
     } else {
       anyActive = true;
