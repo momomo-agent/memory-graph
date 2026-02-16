@@ -421,8 +421,8 @@ function triggerSpreadActivation(node) {
   spreadActive = true;
   spreadTimeouts.forEach(t => clearTimeout(t));
   spreadTimeouts = [];
-  // Clean up old pulse overlays
-  pulseParticles.forEach(p => { if (p.overlayLine) { Graph.scene().remove(p.overlayLine); p.overlayLine.geometry.dispose(); p.overlayMat.dispose(); } });
+  // Clean up old pulse particles
+  pulseParticles.forEach(p => { if (p.currentLine) Graph.scene().remove(p.currentLine); });
   pulseParticles.length = 0;
 
   const act = spreadActivation(node.id);
@@ -507,89 +507,69 @@ function triggerSpreadActivation(node) {
       // Don't light source node here — it should already be lit from previous hop
       // Target node will be lit when current arrives
 
-      // Create overlay line with shader — white light sweeps along the curve
+      // Create electric current overlay line — use same path as library line
       const color = new THREE.Color(getColor(parentId)).lerp(new THREE.Color(getColor(nid)), 0.5);
+      const glowColor = color.clone().multiplyScalar(2.0);
 
-      // Copy path from __lineObj
-      let overlayGeo = null;
+      let segments, positions;
+
+      // Try to copy path from the actual library line
       if (link && link.__lineObj) {
         const srcPos = link.__lineObj.geometry.getAttribute('position');
         if (srcPos && srcPos.count >= 2) {
           const count = srcPos.count;
+          segments = count - 1;
+          // Check direction: overlay should go parent→target
           const srcId = typeof link.source === 'object' ? link.source.id : link.source;
           const reverse = srcId !== parentId;
-          const positions = new Float32Array(count * 3);
-          const tValues = new Float32Array(count); // normalized t along line
+          positions = new Float32Array(count * 3);
           for (let i = 0; i < count; i++) {
             const idx = reverse ? (count - 1 - i) : i;
             positions[i*3]   = srcPos.getX(idx);
             positions[i*3+1] = srcPos.getY(idx);
             positions[i*3+2] = srcPos.getZ(idx);
-            tValues[i] = i / (count - 1);
           }
-          overlayGeo = new THREE.BufferGeometry();
-          overlayGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-          overlayGeo.setAttribute('aT', new THREE.Float32BufferAttribute(tValues, 1));
         }
       }
 
-      // Fallback: straight line with t attribute
-      if (!overlayGeo) {
-        const count = 30;
-        const positions = new Float32Array((count + 1) * 3);
-        const tValues = new Float32Array(count + 1);
-        for (let i = 0; i <= count; i++) {
-          const t = i / count;
-          positions[i*3]   = srcNode.x + (tgtNode.x - srcNode.x) * t;
-          positions[i*3+1] = srcNode.y + (tgtNode.y - srcNode.y) * t;
-          positions[i*3+2] = srcNode.z + (tgtNode.z - srcNode.z) * t;
-          tValues[i] = t;
+      // Fallback: compute our own bezier
+      if (!positions) {
+        segments = 30;
+        positions = new Float32Array((segments + 1) * 3);
+        const mx = (srcNode.x + tgtNode.x) / 2;
+        const my = (srcNode.y + tgtNode.y) / 2;
+        const mz = (srcNode.z + tgtNode.z) / 2;
+        const dx = tgtNode.x - srcNode.x, dy = tgtNode.y - srcNode.y, dz = tgtNode.z - srcNode.z;
+        const len = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+        const curvature = Math.min(len * 0.15, 20);
+        let px = -dz, pz = dx;
+        const plen = Math.sqrt(px*px + pz*pz) || 1;
+        px = px/plen * curvature; pz = pz/plen * curvature;
+        const cpx = mx + px, cpy = my, cpz = mz + pz;
+        for (let i = 0; i <= segments; i++) {
+          const t = i / segments;
+          const t1 = 1 - t;
+          positions[i*3]   = t1*t1*srcNode.x + 2*t1*t*cpx + t*t*tgtNode.x;
+          positions[i*3+1] = t1*t1*srcNode.y + 2*t1*t*cpy + t*t*tgtNode.y;
+          positions[i*3+2] = t1*t1*srcNode.z + 2*t1*t*cpz + t*t*tgtNode.z;
         }
-        overlayGeo = new THREE.BufferGeometry();
-        overlayGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        overlayGeo.setAttribute('aT', new THREE.Float32BufferAttribute(tValues, 1));
       }
 
-      const overlayMat = new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        uniforms: {
-          uProgress: { value: 0.0 },
-          uColor: { value: color },
-          uWhite: { value: new THREE.Color(1, 1, 1) }
-        },
-        vertexShader: `
-          attribute float aT;
-          varying float vT;
-          void main() {
-            vT = aT;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          uniform float uProgress;
-          uniform vec3 uColor;
-          uniform vec3 uWhite;
-          varying float vT;
-          void main() {
-            // White glow band centered at uProgress, width ~0.15
-            float dist = abs(vT - uProgress);
-            float glow = smoothstep(0.15, 0.0, dist);
-            // Trail: already-passed area glows with link color
-            float trail = smoothstep(0.02, 0.0, vT - uProgress) * 0.6;
-            vec3 col = mix(uColor, uWhite, glow);
-            float alpha = max(glow, trail);
-            gl_FragColor = vec4(col, alpha);
-          }
-        `
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      // Start with 0 vertices drawn — will animate drawRange
+      geo.setDrawRange(0, 0);
+
+      const mat = new THREE.LineBasicMaterial({
+        color: glowColor, transparent: true, opacity: 1.0,
+        depthWrite: false, linewidth: 2
       });
-
-      const overlayLine = new THREE.Line(overlayGeo, overlayMat);
-      scene.add(overlayLine);
+      const currentLine = new THREE.Line(geo, mat);
+      scene.add(currentLine);
 
       pulseParticles.push({
-        overlayLine,
-        overlayMat,
+        currentLine,
+        segments,
         startTime: performance.now(),
         duration: pulseTravelMs,
         energy,
@@ -618,37 +598,68 @@ function animatePulses(now) {
     const elapsed = now - p.startTime;
     const t = Math.min(elapsed / p.duration, 1);
 
-    // Update shader progress — white light sweeps along the line
-    if (p.overlayMat) {
-      p.overlayMat.uniforms.uProgress.value = t;
-    }
+    // Animate drawRange — electric current extends from source to target
+    const vertexCount = Math.floor(t * (p.segments + 1));
+    p.currentLine.geometry.setDrawRange(0, vertexCount);
 
-    // Light the underlying edge progressively
-    if (p.link && p.link.__lineObj && t > 0.1) {
-      const progress = Math.min((t - 0.1) / 0.8, 1);
-      p.link.__lineObj.material.opacity = 0.4 + progress * 0.6;
-    }
+    // Fade the glow line slightly as it completes
+    p.currentLine.material.opacity = 0.6 + 0.4 * Math.sin(t * Math.PI);
+
+    // DON'T light the underlying edge during animation —
+    // the overlay currentLine IS the visual. Only light the edge when current arrives.
 
     if (t >= 1) {
+      // Current reached target — crossfade: overlay fades out while underlying edge fades in
       p.done = true;
-      // Remove overlay line
-      if (p.overlayLine) {
-        Graph.scene().remove(p.overlayLine);
-        p.overlayLine.geometry.dispose();
-        p.overlayMat.dispose();
-      }
-
-      // Light endpoints
+      
+      // Light endpoints immediately (they animate via lightNode)
       if (p.targetNode) lightNode(p.targetNode.id);
       if (p.sourceNode) lightNode(p.sourceNode.id);
-
-      // Mark link as lit
-      if (p.link) {
+      
+      // Find the link (retry if needed)
+      const theLink = p.link || (() => {
         const gData = Graph.graphData();
-        const li = gData.links.indexOf(p.link);
+        return gData.links.find(l => {
+          const sid = typeof l.source === 'object' ? l.source.id : l.source;
+          const tid2 = typeof l.target === 'object' ? l.target.id : l.target;
+          return (sid === p.sourceNode?.id && tid2 === p.targetNode?.id) || 
+                 (sid === p.targetNode?.id && tid2 === p.sourceNode?.id);
+        });
+      })();
+      
+      // Mark as lit
+      if (theLink) {
+        const gData = Graph.graphData();
+        const li = gData.links.indexOf(theLink);
         if (li >= 0) litLinks.add(li);
-        if (p.link.__lineObj) p.link.__lineObj.material.opacity = 1.0;
       }
+      
+      // Crossfade over 300ms: overlay out, underlying in
+      const fadeStart = performance.now();
+      const fadeDur = 300;
+      const underlyingObj = theLink && theLink.__lineObj;
+      const underStart = underlyingObj ? underlyingObj.material.opacity : 0;
+      
+      const crossfade = () => {
+        const ft = Math.min((performance.now() - fadeStart) / fadeDur, 1);
+        const ease = ft * (2 - ft);
+        // Overlay fades out
+        p.currentLine.material.opacity = 1.0 - ft;
+        // Underlying fades in
+        if (underlyingObj) {
+          underlyingObj.material.opacity = underStart + (1.0 - underStart) * ease;
+        }
+        if (ft < 1) {
+          requestAnimationFrame(crossfade);
+        } else {
+          Graph.scene().remove(p.currentLine);
+          p.currentLine.geometry.dispose();
+          p.currentLine.material.dispose();
+          // Ensure final state
+          if (underlyingObj) underlyingObj.material.opacity = 1.0;
+        }
+      };
+      requestAnimationFrame(crossfade);
     } else {
       anyActive = true;
     }
@@ -744,12 +755,12 @@ function lightLink(link) {
 function resetSpread() {
   spreadTimeouts.forEach(t => clearTimeout(t));
   spreadTimeouts = [];
-  // Clean up pulse overlays
+  // Clean up pulse particles
   pulseParticles.forEach(p => {
-    if (p.overlayLine && !p.done) {
-      Graph.scene().remove(p.overlayLine);
-      p.overlayLine.geometry.dispose();
-      p.overlayMat.dispose();
+    if (p.currentLine && !p.done) {
+      Graph.scene().remove(p.currentLine);
+      p.currentLine.geometry.dispose();
+      p.currentLine.material.dispose();
     }
   });
   pulseParticles.length = 0;
