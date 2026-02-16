@@ -233,7 +233,7 @@ const Graph = ForceGraph3D()(container)
     const defaultOpacity = 0.03 + Math.min(w / 12, 1) * 0.2;
     const mat = new THREE.LineBasicMaterial({
       vertexColors: true, transparent: true, opacity: defaultOpacity,
-      depthWrite: false, blending: THREE.AdditiveBlending
+      depthWrite: false
     });
     const line = new THREE.Line(geo, mat);
     link.__line = line;
@@ -274,6 +274,9 @@ const Graph = ForceGraph3D()(container)
       lt.style.display = 'none';
     }
   })
+  // Drag — update cluster auras in real-time
+  .onNodeDrag(() => { updateClusterAuras(); })
+  .onNodeDragEnd(() => { updateClusterAuras(); })
   // Click — spread activation
   .onNodeClick(node => {
     if (spreadActive && clickedNode === node) {
@@ -289,6 +292,8 @@ const Graph = ForceGraph3D()(container)
     clickedNode = null;
     document.getElementById('tooltip').style.display = 'none';
   });
+
+window._Graph = Graph; // expose for debugging
 
 // Configure forces via the graph's internal d3 engine
 // Customize charge force
@@ -646,74 +651,74 @@ legendDiv.innerHTML = legendItems.map(([l, c]) =>
 // === STATS ===
 document.getElementById('stats').textContent = nodes.length + ' nodes · ' + links.length + ' edges';
 
-// === CONVEX HULL HELPERS ===
-// Build a smooth ellipsoid geometry that encloses cluster nodes
-function buildClusterEllipsoidGeometry(nodePositions, padding) {
-  if (nodePositions.length < 2) return null;
-  // Compute centroid
-  let cx = 0, cy = 0, cz = 0;
-  nodePositions.forEach(p => { cx += p.x; cy += p.y; cz += p.z; });
-  cx /= nodePositions.length; cy /= nodePositions.length; cz /= nodePositions.length;
-  // Compute radii from max distance in each axis + padding
-  let rx = 0, ry = 0, rz = 0;
-  nodePositions.forEach(p => {
-    rx = Math.max(rx, Math.abs(p.x - cx));
-    ry = Math.max(ry, Math.abs(p.y - cy));
-    rz = Math.max(rz, Math.abs(p.z - cz));
-  });
-  rx = Math.max(rx + padding, 8);
-  ry = Math.max(ry + padding, 8);
-  rz = Math.max(rz + padding, 8);
-  // Use a sphere geometry and scale it into an ellipsoid
-  const geo = new THREE.SphereGeometry(1, 24, 16);
-  geo.scale(rx, ry, rz);
-  geo.translate(cx, cy, cz);
-  return geo;
-}
 
-// === CLUSTER HULLS ===
-const hullMeshes = {};
-function updateClusterHulls() {
+// === CLUSTER AURAS (soft glow sprites at cluster centers) ===
+const clusterAuras = {};
+function createGlowTexture(size) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  gradient.addColorStop(0, 'rgba(255,255,255,0.3)');
+  gradient.addColorStop(0.3, 'rgba(255,255,255,0.08)');
+  gradient.addColorStop(0.7, 'rgba(255,255,255,0.02)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(canvas);
+}
+const glowTex = createGlowTexture(128);
+
+function updateClusterAuras() {
   Object.entries(clusterNodeMap).forEach(([cid, nids]) => {
     const pts = nids.map(nid => {
       const n = nodes.find(x => x.id === nid);
       return n && n.x !== undefined ? n : null;
     }).filter(Boolean);
     if (pts.length < 2) {
-      if (hullMeshes[cid]) hullMeshes[cid].visible = false;
+      if (clusterAuras[cid]) clusterAuras[cid].visible = false;
       return;
     }
+    // Compute centroid and spread
+    let cx = 0, cy = 0, cz = 0;
+    pts.forEach(p => { cx += p.x; cy += p.y; cz += p.z; });
+    cx /= pts.length; cy /= pts.length; cz /= pts.length;
+    let maxDist = 0;
+    pts.forEach(p => {
+      const d = Math.sqrt((p.x-cx)**2 + (p.y-cy)**2 + (p.z-cz)**2);
+      if (d > maxDist) maxDist = d;
+    });
+    const auraSize = Math.max(maxDist * 2.5 + 30, 40);
+
     const color = clusterColors[cid] || '#666';
-    const geo = buildClusterEllipsoidGeometry(pts, 15);
-    if (!geo) {
-      if (hullMeshes[cid]) hullMeshes[cid].visible = false;
-      return;
-    }
-    if (hullMeshes[cid]) {
-      hullMeshes[cid].geometry.dispose();
-      hullMeshes[cid].geometry = geo;
-      hullMeshes[cid].visible = true;
+    if (clusterAuras[cid]) {
+      clusterAuras[cid].position.set(cx, cy, cz);
+      clusterAuras[cid].scale.set(auraSize, auraSize, 1);
+      clusterAuras[cid].visible = true;
     } else {
-      const mat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(color), transparent: true, opacity: 0.05,
-        side: THREE.DoubleSide, depthWrite: false
+      const mat = new THREE.SpriteMaterial({
+        map: glowTex, color: new THREE.Color(color),
+        transparent: true, opacity: 0.35,
+        depthWrite: false, blending: THREE.AdditiveBlending
       });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.renderOrder = -1;
-      Graph.scene().add(mesh);
-      hullMeshes[cid] = mesh;
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.set(cx, cy, cz);
+      sprite.scale.set(auraSize, auraSize, 1);
+      sprite.renderOrder = -1;
+      Graph.scene().add(sprite);
+      clusterAuras[cid] = sprite;
     }
   });
 }
 
-let hullInterval = setInterval(() => {
-  if (nodes[0] && nodes[0].x !== undefined) updateClusterHulls();
+let auraInterval = setInterval(() => {
+  if (nodes[0] && nodes[0].x !== undefined) updateClusterAuras();
 }, 500);
 setTimeout(() => {
-  updateClusterHulls();
-  clearInterval(hullInterval);
-  setInterval(updateClusterHulls, 2000);
-}, 8000);
+  updateClusterAuras();
+  clearInterval(auraInterval);
+  setInterval(updateClusterAuras, 1000);
+}, 6000);
 
 // === INITIAL CAMERA ===
 // Immediate: set a reasonable distance so it's not pitch black
