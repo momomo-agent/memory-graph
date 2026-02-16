@@ -924,7 +924,7 @@ function animate(time) {
     });
   }
 
-  // Particle flow along strong edges — follow the actual curve
+  // Particle flow along strong edges
   particleMeshes.forEach(p => {
     p.t += p.speed;
     if (p.t > 1) p.t -= 1;
@@ -936,27 +936,11 @@ function animate(time) {
       return;
     }
 
-    // Sample position from the custom line geometry
-    const customLine = p.link.__customLine;
-    if (customLine) {
-      const pos = customLine.geometry.getAttribute('position');
-      if (pos && pos.count > 1) {
-        const fIdx = p.t * (pos.count - 1);
-        const i0 = Math.floor(fIdx);
-        const i1 = Math.min(i0 + 1, pos.count - 1);
-        const frac = fIdx - i0;
-        const x = pos.getX(i0) + (pos.getX(i1) - pos.getX(i0)) * frac;
-        const y = pos.getY(i0) + (pos.getY(i1) - pos.getY(i0)) * frac;
-        const z = pos.getZ(i0) + (pos.getZ(i1) - pos.getZ(i0)) * frac;
-        p.mesh.position.set(x, y, z);
-      }
-    } else {
-      // Fallback: straight line
-      const x = src.x + (tgt.x - src.x) * p.t;
-      const y = src.y + (tgt.y - src.y) * p.t;
-      const z = src.z + (tgt.z - src.z) * p.t;
-      p.mesh.position.set(x, y, z);
-    }
+    // Lerp position along edge
+    const x = src.x + (tgt.x - src.x) * p.t;
+    const y = src.y + (tgt.y - src.y) * p.t;
+    const z = src.z + (tgt.z - src.z) * p.t;
+    p.mesh.position.set(x, y, z);
 
     // Fade in/out near endpoints
     const fade = Math.min(p.t, 1 - p.t) * 4;
