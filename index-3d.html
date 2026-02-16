@@ -224,8 +224,8 @@ const Graph = ForceGraph3D()(container)
     if (srcCluster === tgtCluster) return getColor(srcId);
     return '#' + blendColors(getColor(srcId), getColor(tgtId)).getHexString();
   })
-  .linkWidth(link => 0.1 + Math.min((link.weight || 1) / 12, 1) * 1.2)
-  .linkOpacity(link => 0.06 + Math.min((link.weight || 1) / 10, 1) * 0.35)
+  .linkWidth(link => 0.08 + Math.min((link.weight || 1) / 14, 1) * 0.8)
+  .linkOpacity(link => 0.03 + Math.min((link.weight || 1) / 12, 1) * 0.2)
   .linkCurvature(0.12)
   .linkCurveRotation(link => {
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
@@ -350,10 +350,10 @@ function updateHighlight() {
     } else if (srcId === focusNode.id || tgtId === focusNode.id) {
       link.__opacity = 0.8;
     } else {
-      link.__opacity = 0.03;
+      link.__opacity = 0.005;
     }
   });
-  Graph.linkOpacity(link => link.__opacity !== undefined ? link.__opacity : 0.06 + Math.min((link.weight || 1) / 10, 1) * 0.35);
+  Graph.linkOpacity(link => link.__opacity !== undefined ? link.__opacity : 0.03 + Math.min((link.weight || 1) / 12, 1) * 0.2);
 }
 
 // === SPREAD ACTIVATION (wave propagation) ===
@@ -385,14 +385,14 @@ function triggerSpreadActivation(node) {
   // Dim all nodes immediately
   nodes.forEach(n => {
     if (!n.__sphere) return;
-    n.__sphere.material.opacity = 0.03;
+    n.__sphere.material.opacity = 0.01;
     n.__sphere.material.emissiveIntensity = 0.02;
-    if (n.__label) n.__label.material.opacity = 0.03;
+    if (n.__label) n.__label.material.opacity = 0.01;
   });
   // Dim all links
   const gData = Graph.graphData();
-  gData.links.forEach(link => { link.__opacity = 0.02; });
-  Graph.linkOpacity(link => link.__opacity !== undefined ? link.__opacity : 0.02);
+  gData.links.forEach(link => { link.__opacity = 0.005; });
+  Graph.linkOpacity(link => link.__opacity !== undefined ? link.__opacity : 0.005);
 
   // Wave: light up nodes by depth
   const actSet = new Set(Object.keys(act));
@@ -445,7 +445,7 @@ function resetSpread() {
   // Restore all links
   const gData = Graph.graphData();
   gData.links.forEach(link => { delete link.__opacity; });
-  Graph.linkOpacity(link => 0.06 + Math.min((link.weight || 1) / 10, 1) * 0.35);
+  Graph.linkOpacity(link => 0.03 + Math.min((link.weight || 1) / 12, 1) * 0.2);
 }
 
 // === TOOLTIP ===
@@ -523,61 +523,27 @@ legendDiv.innerHTML = legendItems.map(([l, c]) =>
 document.getElementById('stats').textContent = nodes.length + ' nodes · ' + links.length + ' edges';
 
 // === CONVEX HULL HELPERS ===
-// 2D convex hull (Graham scan) on x,z plane
-function convexHull2D(points) {
-  if (points.length < 3) return points.slice();
-  const pts = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const cross = (O, A, B) => (A[0]-O[0])*(B[1]-O[1]) - (A[1]-O[1])*(B[0]-O[0]);
-  const lower = [];
-  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop(); lower.push(p); }
-  const upper = [];
-  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop(); upper.push(p); }
-  upper.pop(); lower.pop();
-  return lower.concat(upper);
-}
-
-// Build a 3D extruded convex hull mesh from cluster node positions
-function buildClusterHullGeometry(nodePositions, padding) {
-  if (nodePositions.length < 3) return null;
-  const xzPoints = nodePositions.map(p => [p.x, p.z]);
-  const hull2d = convexHull2D(xzPoints);
-  if (hull2d.length < 3) return null;
-
-  // Compute y range
-  let yMin = Infinity, yMax = -Infinity;
-  nodePositions.forEach(p => { if (p.y < yMin) yMin = p.y; if (p.y > yMax) yMax = p.y; });
-  yMin -= padding; yMax += padding;
-
-  // Expand hull outward by padding
-  const cx2d = hull2d.reduce((s, p) => s + p[0], 0) / hull2d.length;
-  const cz2d = hull2d.reduce((s, p) => s + p[1], 0) / hull2d.length;
-  const expanded = hull2d.map(p => {
-    const dx = p[0] - cx2d, dz = p[1] - cz2d;
-    const dist = Math.sqrt(dx*dx + dz*dz) || 1;
-    return [p[0] + dx / dist * padding, p[1] + dz / dist * padding];
+// Build a smooth ellipsoid geometry that encloses cluster nodes
+function buildClusterEllipsoidGeometry(nodePositions, padding) {
+  if (nodePositions.length < 2) return null;
+  // Compute centroid
+  let cx = 0, cy = 0, cz = 0;
+  nodePositions.forEach(p => { cx += p.x; cy += p.y; cz += p.z; });
+  cx /= nodePositions.length; cy /= nodePositions.length; cz /= nodePositions.length;
+  // Compute radii from max distance in each axis + padding
+  let rx = 0, ry = 0, rz = 0;
+  nodePositions.forEach(p => {
+    rx = Math.max(rx, Math.abs(p.x - cx));
+    ry = Math.max(ry, Math.abs(p.y - cy));
+    rz = Math.max(rz, Math.abs(p.z - cz));
   });
-
-  const n = expanded.length;
-  const vertices = [];
-  for (const p of expanded) vertices.push(p[0], yMax, p[1]); // top ring
-  for (const p of expanded) vertices.push(p[0], yMin, p[1]); // bottom ring
-
-  const indices = [];
-  // Top face (fan)
-  for (let i = 1; i < n - 1; i++) indices.push(0, i, i + 1);
-  // Bottom face (fan, reversed winding)
-  for (let i = 1; i < n - 1; i++) indices.push(n, n + i + 1, n + i);
-  // Side faces
-  for (let i = 0; i < n; i++) {
-    const next = (i + 1) % n;
-    indices.push(i, next, n + next);
-    indices.push(i, n + next, n + i);
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
+  rx = Math.max(rx + padding, 8);
+  ry = Math.max(ry + padding, 8);
+  rz = Math.max(rz + padding, 8);
+  // Use a sphere geometry and scale it into an ellipsoid
+  const geo = new THREE.SphereGeometry(1, 24, 16);
+  geo.scale(rx, ry, rz);
+  geo.translate(cx, cy, cz);
   return geo;
 }
 
@@ -589,12 +555,12 @@ function updateClusterHulls() {
       const n = nodes.find(x => x.id === nid);
       return n && n.x !== undefined ? n : null;
     }).filter(Boolean);
-    if (pts.length < 3) {
+    if (pts.length < 2) {
       if (hullMeshes[cid]) hullMeshes[cid].visible = false;
       return;
     }
     const color = clusterColors[cid] || '#666';
-    const geo = buildClusterHullGeometry(pts, 12);
+    const geo = buildClusterEllipsoidGeometry(pts, 15);
     if (!geo) {
       if (hullMeshes[cid]) hullMeshes[cid].visible = false;
       return;
