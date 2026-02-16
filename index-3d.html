@@ -259,12 +259,17 @@ const Graph = ForceGraph3D()(container)
     return (srcId + tgtId).split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 628 / 100;
   })
   .linkMaterial(link => {
-    const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-    const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-    const c1 = new THREE.Color(getColor(srcId));
-    const c2 = new THREE.Color(getColor(tgtId));
-    c1.lerp(c2, 0.5);
-    return new THREE.LineBasicMaterial({ color: c1, transparent: true, opacity: 0.4, depthWrite: false });
+    // Cache material on the link object so library reuses the same ref each frame
+    // This lets us modify opacity for dim/spread without the library overwriting it
+    if (!link.__customMat) {
+      const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+      const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+      const c1 = new THREE.Color(getColor(srcId));
+      const c2 = new THREE.Color(getColor(tgtId));
+      c1.lerp(c2, 0.5);
+      link.__customMat = new THREE.LineBasicMaterial({ color: c1, transparent: true, opacity: 0.4, depthWrite: false });
+    }
+    return link.__customMat;
   })
   .linkWidth(link => {
     const w = link.weight || 1;
