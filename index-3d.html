@@ -273,11 +273,12 @@ const Graph = ForceGraph3D()(container)
   // Click — spread activation
   .onNodeClick(node => {
     if (spreadActive && clickedNode === node) {
-      // Clicking same node again — just end spread mode, keep everything lit
-      spreadActive = false;
-      clickedNode = null;
+      // Clicking same node again — restore all
+      restoreAll();
       return;
     }
+    // New node — reset previous spread first, then start fresh
+    restoreAll();
     clickedNode = node;
     triggerSpreadActivation(node);
     showTooltip(node);
