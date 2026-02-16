@@ -276,14 +276,10 @@ const Graph = ForceGraph3D()(container)
   .onNodeHover(node => {
     container.style.cursor = node ? 'pointer' : 'default';
     hoveredNode = node;
+    if (!spreadActive) updateHighlight();
     if (!node) {
       document.getElementById('tooltip').style.display = 'none';
-      if (!spreadActive) updateHighlight();
-      return;
     }
-    // Show tooltip on hover (matching 2D behavior)
-    showTooltip(node);
-    if (!spreadActive) updateHighlight();
   })
   // Link hover tooltip
   .onLinkHover(link => {
@@ -386,17 +382,24 @@ function updateHighlight() {
     return;
   }
 
-  // Direct neighbors only (matching 2D behavior)
-  const neighbors = adj[focusNode.id] || new Set();
+  // Use spread activation for hover too
+  const act = spreadActivation(focusNode.id);
+  const maxAct = Math.max(...Object.values(act));
+  const actSet = new Set(Object.keys(act));
 
   nodes.forEach(node => {
     if (!node.__sphere) return;
     const mat = node.__sphere.material;
     const label = node.__label;
-    if (node.id === focusNode.id || neighbors.has(node.id)) {
+    if (node.id === focusNode.id) {
       mat.opacity = 1.0;
-      mat.emissiveIntensity = node.id === focusNode.id ? 1.0 : 0.6;
+      mat.emissiveIntensity = 1.0;
       if (label) label.material.opacity = 1.0;
+    } else if (actSet.has(node.id)) {
+      const energy = (act[node.id] || 0) / maxAct;
+      mat.opacity = 0.3 + energy * 0.7;
+      mat.emissiveIntensity = 0.2 + energy * 0.6;
+      if (label) label.material.opacity = 0.3 + energy * 0.7;
     } else {
       mat.opacity = 0.05;
       mat.emissiveIntensity = 0.02;
@@ -409,8 +412,9 @@ function updateHighlight() {
     if (!link.__lineObj) return;
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-    if (srcId === focusNode.id || tgtId === focusNode.id) {
-      link.__lineObj.material.opacity = 0.9;
+    if (actSet.has(srcId) && actSet.has(tgtId)) {
+      const e = Math.min((act[srcId] || 0), (act[tgtId] || 0)) / maxAct;
+      link.__lineObj.material.opacity = 0.2 + e * 0.6;
     } else {
       link.__lineObj.material.opacity = 0.01;
     }
