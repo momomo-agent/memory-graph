@@ -198,12 +198,12 @@ const Graph = ForceGraph3D()(container)
     // Label sprite
     const sprite = new SpriteText(node.id);
     sprite.color = color;
-    sprite.textHeight = Math.max(1.5, Math.min(3, radius * 0.5));
+    sprite.textHeight = Math.max(3, Math.min(6, radius * 0.8));
     sprite.position.y = -(radius + 2);
     sprite.fontFace = '-apple-system, BlinkMacSystemFont, sans-serif';
     sprite.material.depthWrite = false;
     sprite.material.transparent = true;
-    sprite.material.opacity = 0.7;
+    sprite.material.opacity = 0.85;
     group.add(sprite);
 
     // Store refs for hover/click
@@ -224,8 +224,8 @@ const Graph = ForceGraph3D()(container)
     if (srcCluster === tgtCluster) return getColor(srcId);
     return '#' + blendColors(getColor(srcId), getColor(tgtId)).getHexString();
   })
-  .linkWidth(link => 0.2 + Math.min((link.weight || 1) / 10, 1) * 1.5)
-  .linkOpacity(0.35)
+  .linkWidth(link => 0.1 + Math.min((link.weight || 1) / 12, 1) * 1.2)
+  .linkOpacity(link => 0.06 + Math.min((link.weight || 1) / 10, 1) * 0.35)
   .linkCurvature(0.12)
   .linkCurveRotation(link => {
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
@@ -325,7 +325,7 @@ function updateHighlight() {
     if (!focusNode) {
       mat.opacity = 0.85;
       mat.emissiveIntensity = 0.3;
-      if (label) label.material.opacity = 0.7;
+      if (label) label.material.opacity = 0.85;
     } else if (node.id === focusNode.id) {
       mat.opacity = 1.0;
       mat.emissiveIntensity = 0.8;
@@ -346,14 +346,14 @@ function updateHighlight() {
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
     if (!focusNode) {
-      link.__opacity = 0.35;
+      delete link.__opacity;
     } else if (srcId === focusNode.id || tgtId === focusNode.id) {
       link.__opacity = 0.8;
     } else {
       link.__opacity = 0.03;
     }
   });
-  Graph.linkOpacity(link => link.__opacity !== undefined ? link.__opacity : 0.35);
+  Graph.linkOpacity(link => link.__opacity !== undefined ? link.__opacity : 0.06 + Math.min((link.weight || 1) / 10, 1) * 0.35);
 }
 
 // === SPREAD ACTIVATION (wave propagation) ===
@@ -440,12 +440,12 @@ function resetSpread() {
     if (!n.__sphere) return;
     n.__sphere.material.opacity = 0.85;
     n.__sphere.material.emissiveIntensity = 0.3;
-    if (n.__label) n.__label.material.opacity = 0.7;
+    if (n.__label) n.__label.material.opacity = 0.85;
   });
   // Restore all links
   const gData = Graph.graphData();
-  gData.links.forEach(link => { link.__opacity = 0.35; });
-  Graph.linkOpacity(link => 0.35);
+  gData.links.forEach(link => { delete link.__opacity; });
+  Graph.linkOpacity(link => 0.06 + Math.min((link.weight || 1) / 10, 1) * 0.35);
 }
 
 // === TOOLTIP ===
@@ -522,6 +522,65 @@ legendDiv.innerHTML = legendItems.map(([l, c]) =>
 // === STATS ===
 document.getElementById('stats').textContent = nodes.length + ' nodes · ' + links.length + ' edges';
 
+// === CONVEX HULL HELPERS ===
+// 2D convex hull (Graham scan) on x,z plane
+function convexHull2D(points) {
+  if (points.length < 3) return points.slice();
+  const pts = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (O, A, B) => (A[0]-O[0])*(B[1]-O[1]) - (A[1]-O[1])*(B[0]-O[0]);
+  const lower = [];
+  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop(); lower.push(p); }
+  const upper = [];
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop(); upper.push(p); }
+  upper.pop(); lower.pop();
+  return lower.concat(upper);
+}
+
+// Build a 3D extruded convex hull mesh from cluster node positions
+function buildClusterHullGeometry(nodePositions, padding) {
+  if (nodePositions.length < 3) return null;
+  const xzPoints = nodePositions.map(p => [p.x, p.z]);
+  const hull2d = convexHull2D(xzPoints);
+  if (hull2d.length < 3) return null;
+
+  // Compute y range
+  let yMin = Infinity, yMax = -Infinity;
+  nodePositions.forEach(p => { if (p.y < yMin) yMin = p.y; if (p.y > yMax) yMax = p.y; });
+  yMin -= padding; yMax += padding;
+
+  // Expand hull outward by padding
+  const cx2d = hull2d.reduce((s, p) => s + p[0], 0) / hull2d.length;
+  const cz2d = hull2d.reduce((s, p) => s + p[1], 0) / hull2d.length;
+  const expanded = hull2d.map(p => {
+    const dx = p[0] - cx2d, dz = p[1] - cz2d;
+    const dist = Math.sqrt(dx*dx + dz*dz) || 1;
+    return [p[0] + dx / dist * padding, p[1] + dz / dist * padding];
+  });
+
+  const n = expanded.length;
+  const vertices = [];
+  for (const p of expanded) vertices.push(p[0], yMax, p[1]); // top ring
+  for (const p of expanded) vertices.push(p[0], yMin, p[1]); // bottom ring
+
+  const indices = [];
+  // Top face (fan)
+  for (let i = 1; i < n - 1; i++) indices.push(0, i, i + 1);
+  // Bottom face (fan, reversed winding)
+  for (let i = 1; i < n - 1; i++) indices.push(n, n + i + 1, n + i);
+  // Side faces
+  for (let i = 0; i < n; i++) {
+    const next = (i + 1) % n;
+    indices.push(i, next, n + next);
+    indices.push(i, n + next, n + i);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // === CLUSTER HULLS ===
 const hullMeshes = {};
 function updateClusterHulls() {
@@ -530,31 +589,30 @@ function updateClusterHulls() {
       const n = nodes.find(x => x.id === nid);
       return n && n.x !== undefined ? n : null;
     }).filter(Boolean);
-    if (pts.length < 2) return;
-    const cx = pts.reduce((s, n) => s + n.x, 0) / pts.length;
-    const cy = pts.reduce((s, n) => s + n.y, 0) / pts.length;
-    const cz = pts.reduce((s, n) => s + n.z, 0) / pts.length;
-    let maxR = 0;
-    pts.forEach(n => {
-      const dx = n.x - cx, dy = n.y - cy, dz = n.z - cz;
-      const r = Math.sqrt(dx*dx + dy*dy + dz*dz);
-      if (r > maxR) maxR = r;
-    });
-    maxR += 15;
+    if (pts.length < 3) {
+      if (hullMeshes[cid]) hullMeshes[cid].visible = false;
+      return;
+    }
     const color = clusterColors[cid] || '#666';
-    if (!hullMeshes[cid]) {
-      const geo = new THREE.SphereGeometry(1, 24, 16);
+    const geo = buildClusterHullGeometry(pts, 12);
+    if (!geo) {
+      if (hullMeshes[cid]) hullMeshes[cid].visible = false;
+      return;
+    }
+    if (hullMeshes[cid]) {
+      hullMeshes[cid].geometry.dispose();
+      hullMeshes[cid].geometry = geo;
+      hullMeshes[cid].visible = true;
+    } else {
       const mat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(color), transparent: true, opacity: 0.04,
-        side: THREE.BackSide, depthWrite: false
+        color: new THREE.Color(color), transparent: true, opacity: 0.05,
+        side: THREE.DoubleSide, depthWrite: false
       });
       const mesh = new THREE.Mesh(geo, mat);
+      mesh.renderOrder = -1;
       Graph.scene().add(mesh);
       hullMeshes[cid] = mesh;
     }
-    const mesh = hullMeshes[cid];
-    mesh.position.set(cx, cy, cz);
-    mesh.scale.set(maxR, maxR, maxR);
   });
 }
 
