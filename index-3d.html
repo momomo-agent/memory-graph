@@ -440,7 +440,7 @@ function triggerSpreadActivation(node) {
   const gData = Graph.graphData();
   gData.links.forEach((link, i) => { 
     if (litLinks.has(i)) return; // already lit
-    if (link.__lineObj) link.__lineObj.material.opacity = 0.02; 
+    if (link.__lineObj) link.__lineObj.material.opacity = 0; 
   });
 
   // Light up seed node immediately with a flash
@@ -536,6 +536,22 @@ function triggerSpreadActivation(node) {
         if (!litLinks.has(i) && link.__lineObj) {
           lightLink(link);
         }
+      }
+    });
+    // Final consistency pass: any visible line must have both endpoints lit,
+    // any line with dark endpoints must be dark
+    gData.links.forEach((link, i) => {
+      if (!link.__lineObj) return;
+      const sid = typeof link.source === 'object' ? link.source.id : link.source;
+      const tid2 = typeof link.target === 'object' ? link.target.id : link.target;
+      if (link.__lineObj.material.opacity > 0.1) {
+        // Line is visible — ensure both endpoints are lit
+        lightNode(sid);
+        lightNode(tid2);
+      }
+      if (!litNodes.has(sid) && !litNodes.has(tid2)) {
+        // Both endpoints dark — force line dark
+        link.__lineObj.material.opacity = 0;
       }
     });
   }, fallbackDelay);
