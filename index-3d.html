@@ -57,7 +57,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="tooltip"></div>
 <div id="legend"></div>
 <div id="stats"></div>
-<div id="controls">鼠标拖拽旋转 · 滚轮缩放 · 右键平移 · WASD移动</div>
+<div id="controls">鼠标拖拽旋转 · 滚轮前进后退 · WASD穿梭 · 点击节点扩散 · 点击空白恢复</div>
 <div id="link-tooltip"></div>
 <div id="graph-container"></div>
 
@@ -160,6 +160,8 @@ nodes.forEach(n => { n.__breathPhase = Math.random() * Math.PI * 2; });
 
 // Spread activation state
 let spreadActive = false;
+const litNodes = new Set(); // nodes lit by spread activation
+const litLinks = new Set(); // link indices lit by spread activation
 let spreadTimeouts = [];
 
 // Particle flow data for strong links
@@ -265,7 +267,9 @@ const Graph = ForceGraph3D()(container)
   // Click — spread activation
   .onNodeClick(node => {
     if (spreadActive && clickedNode === node) {
-      resetSpread();
+      // Clicking same node again — just end spread mode, keep everything lit
+      spreadActive = false;
+      clickedNode = null;
       return;
     }
     clickedNode = node;
@@ -275,6 +279,8 @@ const Graph = ForceGraph3D()(container)
   .onBackgroundClick(() => {
     resetSpread();
     // Restore all nodes/links to default opacity
+    litNodes.clear();
+    litLinks.clear();
     nodes.forEach(n => {
       if (!n.__sphere) return;
       n.__sphere.material.opacity = 0.85;
@@ -407,17 +413,22 @@ function triggerSpreadActivation(node) {
     });
   }
 
-  // Dim everything
+  // Dim only nodes/links not previously lit by spread
   nodes.forEach(n => {
     if (!n.__sphere) return;
+    if (litNodes.has(n.id)) return; // already lit, keep bright
     n.__sphere.material.opacity = 0.03;
     n.__sphere.material.emissiveIntensity = 0.01;
     if (n.__label) n.__label.material.opacity = 0.02;
   });
   const gData = Graph.graphData();
-  gData.links.forEach(link => { if (link.__lineObj) link.__lineObj.material.opacity = 0.02; });
+  gData.links.forEach((link, i) => { 
+    if (litLinks.has(i)) return; // already lit
+    if (link.__lineObj) link.__lineObj.material.opacity = 0.02; 
+  });
 
   // Light up seed node immediately with a flash
+  litNodes.add(node.id);
   if (node.__sphere) {
     node.__sphere.material.opacity = 1.0;
     node.__sphere.material.emissiveIntensity = 1.0;
@@ -518,6 +529,10 @@ function animatePulses(now) {
     // Light up the edge as pulse passes
     if (p.link && p.link.__lineObj) {
       p.link.__lineObj.material.opacity = Math.max(p.link.__lineObj.material.opacity, 0.15 + glow * 0.5 * p.energy);
+      // Mark this link as lit
+      const gData = Graph.graphData();
+      const li = gData.links.indexOf(p.link);
+      if (li >= 0) litLinks.add(li);
     }
 
     if (t >= 1) {
@@ -529,6 +544,7 @@ function animatePulses(now) {
 
       const tgtNode = nodes.find(x => x.id === p.targetNodeId);
       if (tgtNode && tgtNode.__sphere) {
+        litNodes.add(tgtNode.id); // Mark as lit
         const finalOpacity = 0.2 + p.energy * 0.8;
         const finalEmissive = 0.1 + p.energy * 0.7;
         // Flash bright then settle
@@ -718,19 +734,9 @@ setTimeout(() => {
 }, 6000);
 
 // === INITIAL CAMERA ===
-// Immediate: set a reasonable distance so it's not pitch black
-Graph.cameraPosition({ x: 0, y: 120, z: 300 });
-// Early zoomToFit attempts while layout is still running
-setTimeout(() => { Graph.zoomToFit(400, 60); }, 1500);
-setTimeout(() => { Graph.zoomToFit(500, 60); }, 3000);
-// When engine stops (layout done), do a final precise fit
-let engineStopped = false;
-Graph.onEngineStop(() => {
-  if (!engineStopped) {
-    engineStopped = true;
-    Graph.zoomToFit(600, 60);
-  }
-});
+// Start inside the graph, not far away
+Graph.cameraPosition({ x: 0, y: 30, z: 80 });
+// No zoomToFit — we stay inside the graph like a game
 
 // === LIGHTING ===
 setTimeout(() => {
@@ -808,7 +814,7 @@ function animate(time) {
 }
 requestAnimationFrame(animate);
 
-// === KEYBOARD CONTROLS (WASD only) ===
+// === KEYBOARD CONTROLS (WASD game-style) ===
 const keysDown = new Set();
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
@@ -816,34 +822,44 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => keysDown.delete(e.code));
 
+// Scroll wheel = fly forward/backward
+window.addEventListener('wheel', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const cam = Graph.camera();
+  const controls = Graph.controls();
+  const dir = new THREE.Vector3();
+  cam.getWorldDirection(dir);
+  const speed = e.deltaY < 0 ? 8 : -8;
+  cam.position.addScaledVector(dir, speed);
+  controls.target.addScaledVector(dir, speed);
+  controls.update();
+}, { passive: true });
+
 function tickKeyboard() {
   requestAnimationFrame(tickKeyboard);
   if (keysDown.size === 0) return;
   const cam = Graph.camera();
   const controls = Graph.controls();
-  const speed = 4;
+  const speed = 3;
 
-  // Camera-relative horizontal directions
-  const forward = new THREE.Vector3();
-  cam.getWorldDirection(forward);
-  forward.y = 0;
-  if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
-  forward.normalize();
-  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+  // Full 3D camera direction for W/S
+  const forward3D = new THREE.Vector3();
+  cam.getWorldDirection(forward3D);
+  // Horizontal-only for A/D strafing
+  const forwardH = forward3D.clone(); forwardH.y = 0;
+  if (forwardH.lengthSq() < 0.001) forwardH.set(0, 0, -1);
+  forwardH.normalize();
+  const right = new THREE.Vector3().crossVectors(forwardH, new THREE.Vector3(0, 1, 0)).normalize();
 
-  let dx = 0, dy = 0, dz = 0;
-  if (keysDown.has('KeyW')) { dx += forward.x * speed; dz += forward.z * speed; }
-  if (keysDown.has('KeyS')) { dx -= forward.x * speed; dz -= forward.z * speed; }
-  if (keysDown.has('KeyA')) { dx -= right.x * speed; dz -= right.z * speed; }
-  if (keysDown.has('KeyD')) { dx += right.x * speed; dz += right.z * speed; }
+  let move = new THREE.Vector3();
+  if (keysDown.has('KeyW')) move.addScaledVector(forward3D, speed);
+  if (keysDown.has('KeyS')) move.addScaledVector(forward3D, -speed);
+  if (keysDown.has('KeyA')) move.addScaledVector(right, -speed);
+  if (keysDown.has('KeyD')) move.addScaledVector(right, speed);
 
-  if (dx || dy || dz) {
-    controls.target.x += dx;
-    controls.target.y += dy;
-    controls.target.z += dz;
-    cam.position.x += dx;
-    cam.position.y += dy;
-    cam.position.z += dz;
+  if (move.lengthSq() > 0) {
+    cam.position.add(move);
+    controls.target.add(move);
   }
   controls.update();
 }
