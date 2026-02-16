@@ -410,6 +410,8 @@ function triggerSpreadActivation(node) {
 
   const act = spreadActivation(node.id);
   const maxAct = Math.max(...Object.values(act));
+  // Only keep nodes with meaningful energy (>15% of max)
+  const energyThreshold = maxAct * 0.15;
 
   // BFS depth from seed
   const depthMap = {}; depthMap[node.id] = 0;
@@ -420,7 +422,7 @@ function triggerSpreadActivation(node) {
     const cur = bfsQueue.shift();
     const nb = adj[cur] || new Set();
     nb.forEach(nid => {
-      if (!visited.has(nid) && act[nid]) {
+      if (!visited.has(nid) && act[nid] >= energyThreshold) {
         visited.add(nid);
         depthMap[nid] = depthMap[cur] + 1;
         parentMap[nid] = cur;
@@ -544,31 +546,29 @@ function triggerSpreadActivation(node) {
   const maxHop = Math.max(...Object.values(depthMap), 0);
   const fallbackDelay = (maxHop + 2) * hopDelayMs + pulseTravelMs + 200;
   const fallbackTid = setTimeout(() => {
-    // Light all activated nodes
-    Object.keys(act).forEach(nid => lightNode(nid));
-    // Light all links between activated nodes
+    // Only light nodes that were in the BFS tree (had current animation)
+    Object.keys(depthMap).forEach(nid => lightNode(nid));
+    // Light links between BFS-tree nodes only
     gData.links.forEach((link, i) => {
       const sid = typeof link.source === 'object' ? link.source.id : link.source;
       const tid2 = typeof link.target === 'object' ? link.target.id : link.target;
-      if ((litNodes.has(sid) || act[sid]) && (litNodes.has(tid2) || act[tid2])) {
+      if (depthMap[sid] !== undefined && depthMap[tid2] !== undefined) {
         if (!litLinks.has(i) && link.__lineObj) {
           lightLink(link);
         }
       }
     });
-    // Final consistency pass: any visible line must have both endpoints lit,
-    // any line with dark endpoints must be dark
+    // Final consistency: any visible line must have both endpoints lit,
+    // any line with both endpoints dark must be dark
     gData.links.forEach((link, i) => {
       if (!link.__lineObj) return;
       const sid = typeof link.source === 'object' ? link.source.id : link.source;
       const tid2 = typeof link.target === 'object' ? link.target.id : link.target;
       if (link.__lineObj.material.opacity > 0.1) {
-        // Line is visible — ensure both endpoints are lit
         lightNode(sid);
         lightNode(tid2);
       }
       if (!litNodes.has(sid) && !litNodes.has(tid2)) {
-        // Both endpoints dark — force line dark
         link.__lineObj.material.opacity = 0;
       }
     });
