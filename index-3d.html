@@ -512,6 +512,33 @@ function triggerSpreadActivation(node) {
     }, startDelay);
     spreadTimeouts.push(tid);
   });
+
+  // Fallback: after all pulses should be done, force-light any activated nodes/links still dark
+  const maxHop = Math.max(...Object.values(depthMap), 0);
+  const fallbackDelay = (maxHop + 2) * hopDelayMs + pulseTravelMs + 200;
+  const fallbackTid = setTimeout(() => {
+    // Light all activated nodes
+    Object.keys(act).forEach(nid => {
+      if (litNodes.has(nid)) return;
+      const n = nodes.find(x => x.id === nid);
+      if (!n || !n.__sphere) return;
+      litNodes.add(nid);
+      n.__sphere.material.opacity = 1.0;
+      n.__sphere.material.emissiveIntensity = 0.6;
+      if (n.__label) n.__label.material.opacity = 1.0;
+    });
+    // Light all links between activated nodes
+    gData.links.forEach((link, i) => {
+      if (litLinks.has(i)) return;
+      const sid = typeof link.source === 'object' ? link.source.id : link.source;
+      const tid2 = typeof link.target === 'object' ? link.target.id : link.target;
+      if (litNodes.has(sid) && litNodes.has(tid2) && link.__lineObj) {
+        litLinks.add(i);
+        link.__lineObj.material.opacity = 0.8;
+      }
+    });
+  }, fallbackDelay);
+  spreadTimeouts.push(fallbackTid);
 }
 
 function animatePulses(now) {
@@ -535,26 +562,36 @@ function animatePulses(now) {
     const scale = 0.8 + glow * 0.5;
     p.mesh.scale.set(scale, scale, scale);
 
-    // Light up the edge as pulse passes — keep it bright
+    // Gradually light up the edge as pulse travels along it
     if (p.link && p.link.__lineObj) {
-      p.link.__lineObj.material.opacity = Math.max(p.link.__lineObj.material.opacity, 0.7 + glow * 0.3);
+      // Opacity ramps up with pulse progress — stays at peak once reached
+      const edgeOpacity = 0.1 + t * 0.9; // 0.1 → 1.0 as pulse travels
+      p.link.__lineObj.material.opacity = Math.max(p.link.__lineObj.material.opacity, edgeOpacity);
       // Mark this link as lit
-      const gData = Graph.graphData();
-      const li = gData.links.indexOf(p.link);
-      if (li >= 0) litLinks.add(li);
+      if (!p.__linkMarked) {
+        const gData = Graph.graphData();
+        const li = gData.links.indexOf(p.link);
+        if (li >= 0) litLinks.add(li);
+        p.__linkMarked = true;
+      }
     }
 
     if (t >= 1) {
-      // Pulse arrived — flash the target node
+      // Pulse arrived — light up the target node
       p.done = true;
       Graph.scene().remove(p.mesh);
       p.mesh.geometry.dispose();
       p.mesh.material.dispose();
 
+      // Ensure edge stays fully bright
+      if (p.link && p.link.__lineObj) {
+        p.link.__lineObj.material.opacity = 1.0;
+      }
+
+      // Light up target node — search by id to be safe
       const tgtNode = nodes.find(x => x.id === p.targetNodeId);
       if (tgtNode && tgtNode.__sphere) {
-        litNodes.add(tgtNode.id); // Mark as lit
-        // Stay bright — no fade down
+        litNodes.add(tgtNode.id);
         tgtNode.__sphere.material.opacity = 1.0;
         tgtNode.__sphere.material.emissiveIntensity = 0.6 + p.energy * 0.4;
         if (tgtNode.__label) tgtNode.__label.material.opacity = 1.0;
