@@ -584,7 +584,19 @@ function animatePulses(now) {
       requestAnimationFrame(fadeLine);
 
       // NOW light the underlying edge and both endpoints
-      if (p.link) lightLink(p.link);
+      if (p.link) {
+        lightLink(p.link);
+      } else {
+        // Retry finding the link — it may not have existed when pulse was created
+        const gData = Graph.graphData();
+        const foundLink = gData.links.find(l => {
+          const sid = typeof l.source === 'object' ? l.source.id : l.source;
+          const tid2 = typeof l.target === 'object' ? l.target.id : l.target;
+          return (sid === p.sourceNode?.id && tid2 === p.targetNode?.id) || 
+                 (sid === p.targetNode?.id && tid2 === p.sourceNode?.id);
+        });
+        if (foundLink) lightLink(foundLink);
+      }
       if (p.targetNode) lightNode(p.targetNode.id);
       if (p.sourceNode) lightNode(p.sourceNode.id);
     } else {
@@ -630,16 +642,26 @@ function lightNode(nid) {
 }
 
 function lightLink(link) {
-  if (!link || !link.__lineObj) return;
-  link.__lineObj.material.opacity = 1.0;
-  const gData = Graph.graphData();
-  const li = gData.links.indexOf(link);
-  if (li >= 0) litLinks.add(li);
-  // Always light both endpoints
-  const sid = typeof link.source === 'object' ? link.source.id : link.source;
-  const tid = typeof link.target === 'object' ? link.target.id : link.target;
-  lightNode(sid);
-  lightNode(tid);
+  if (!link) return;
+  // Try to light the __lineObj, retry if not yet created
+  const doLight = () => {
+    if (link.__lineObj) {
+      link.__lineObj.material.opacity = 1.0;
+      const gData = Graph.graphData();
+      const li = gData.links.indexOf(link);
+      if (li >= 0) litLinks.add(li);
+    } else {
+      // __lineObj not yet created, retry next frame
+      requestAnimationFrame(doLight);
+      return;
+    }
+    // Always light both endpoints
+    const sid = typeof link.source === 'object' ? link.source.id : link.source;
+    const tid = typeof link.target === 'object' ? link.target.id : link.target;
+    lightNode(sid);
+    lightNode(tid);
+  };
+  doLight();
 }
 
 function resetSpread() {
