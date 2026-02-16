@@ -451,35 +451,19 @@ function triggerSpreadActivation(node) {
     }
   }
 
-  // Dim nodes/links with animation (not instant)
-  const dimDur = 300;
-  const dimT0 = performance.now();
-  const dimTargets = [];
+  // Dim nodes/links instantly
+  const gData = Graph.graphData();
   nodes.forEach(n => {
     if (!n.__sphere) return;
     if (litNodes.has(n.id)) return;
-    dimTargets.push({ sphere: n.__sphere, label: n.__label, startOp: n.__sphere.material.opacity, startEm: n.__sphere.material.emissiveIntensity, startLbl: n.__label ? n.__label.material.opacity : 0 });
+    n.__sphere.material.opacity = 0.03;
+    n.__sphere.material.emissiveIntensity = 0.01;
+    if (n.__label) n.__label.material.opacity = 0.02;
   });
-  const dimLinks = [];
-  const gData = Graph.graphData();
   gData.links.forEach((link, i) => {
     if (litLinks.has(i)) return;
-    if (link.__lineObj) dimLinks.push({ obj: link.__lineObj, startOp: link.__lineObj.material.opacity });
+    if (link.__lineObj) link.__lineObj.material.opacity = 0;
   });
-  const animDim = () => {
-    const p = Math.min((performance.now() - dimT0) / dimDur, 1);
-    const ease = p * (2 - p);
-    dimTargets.forEach(d => {
-      d.sphere.material.opacity = d.startOp + (0.03 - d.startOp) * ease;
-      d.sphere.material.emissiveIntensity = d.startEm + (0.01 - d.startEm) * ease;
-      if (d.label) d.label.material.opacity = d.startLbl + (0.02 - d.startLbl) * ease;
-    });
-    dimLinks.forEach(d => {
-      d.obj.material.opacity = d.startOp + (0 - d.startOp) * ease;
-    });
-    if (p < 1) requestAnimationFrame(animDim);
-  };
-  requestAnimationFrame(animDim);
 
   // Light up seed node with animation
   litNodes.add(node.id);
