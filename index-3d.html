@@ -915,29 +915,8 @@ function animate(time) {
   requestAnimationFrame(animate);
   const t = time * 0.001;
 
-  // During spread: every frame, enforce correct opacity for ALL links and nodes
-  // This is the single source of truth — no more fighting with library internals
-  if (spreadActive) {
-    const gData = Graph.graphData();
-    gData.links.forEach((link, i) => {
-      if (!link.__lineObj) return;
-      if (litLinks.has(i)) {
-        // Lit links stay bright (lightLink animation handles the transition)
-      } else {
-        link.__lineObj.material.opacity = 0;
-      }
-    });
-    nodes.forEach(n => {
-      if (!n.__sphere) return;
-      if (litNodes.has(n.id)) {
-        // Lit nodes stay bright (lightNode animation handles the transition)
-      } else {
-        n.__sphere.material.opacity = 0.03;
-        n.__sphere.material.emissiveIntensity = 0.01;
-        if (n.__label) n.__label.material.opacity = 0.02;
-      }
-    });
-  }
+  // No continuous dim — initial dim in triggerSpreadActivation is sufficient
+  // Late-created __lineObj will inherit library default but that's acceptable
 
   // Breathing animation — ±4% scale pulsation
   if (!spreadActive) {
