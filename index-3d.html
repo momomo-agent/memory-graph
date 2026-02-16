@@ -216,7 +216,7 @@ const Graph = ForceGraph3D()(container)
   })
   .nodeThreeObjectExtend(false)
   // Link appearance — blended color for cross-cluster edges
-  .linkThreeObjectExtend(true)
+  .linkThreeObjectExtend(false)
   .linkThreeObject(link => {
     // Custom line with vertex colors for gradient
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
@@ -248,8 +248,6 @@ const Graph = ForceGraph3D()(container)
     pos.array[3] = end.x;   pos.array[4] = end.y;   pos.array[5] = end.z;
     pos.needsUpdate = true;
   })
-  .linkWidth(0) // disable default cylinder (we use custom Line)
-  .linkOpacity(1) // let our material handle opacity
   // Force layout tuning
   .d3AlphaDecay(0.02)
   .d3VelocityDecay(0.3)
