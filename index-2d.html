@@ -470,31 +470,32 @@ nodeEls.on("click", (e, d) => {
   linkEls.transition("spread-dim").duration(200).attr("stroke-opacity", 0.02);
   labelEls.transition("spread-dim").duration(200).attr("fill-opacity", 0.03);
 
-  // Wave: light up nodes by depth
+  // Wave: light up nodes by depth — same opacity as default state
   Object.entries(act).forEach(([nid, energy]) => {
-    const norm = energy / maxAct;
     const hop = depth[nid] || 0;
     const delay = 250 + hop * waveMs;
+    const defaultNodeOp = 0.9 + Math.min((degree[nid]||1) / maxDeg, 1) * 0.1;
+    const defaultLabelOp = 0.75 + Math.min((degree[nid]||1) / maxDeg, 1) * 0.25;
     nodeEls.filter(n => n.id === nid)
       .transition("spread-light").delay(delay).duration(350)
-      .attr("fill-opacity", 0.3 + norm * 0.7);
+      .attr("fill-opacity", defaultNodeOp);
     labelEls.filter(n => n.id === nid)
       .transition("spread-light").delay(delay).duration(350)
-      .attr("fill-opacity", 0.3 + norm * 0.7)
+      .attr("fill-opacity", defaultLabelOp)
       .attr("fill", getColor(nid));
   });
 
-  // Wave: light up edges when both endpoints are lit (use later endpoint's depth)
+  // Wave: light up edges — same opacity as default state
   const actSet = new Set(Object.keys(act));
   linkEls.filter(l => actSet.has(l.source.id) && actSet.has(l.target.id))
     .each(function(l) {
       const srcDepth = depth[l.source.id] || 0;
       const tgtDepth = depth[l.target.id] || 0;
       const edgeHop = Math.min(srcDepth, tgtDepth);
-      const delay = 250 + edgeHop * waveMs + waveMs * 0.3; // slightly after the node
-      const en = Math.min(act[l.source.id]||0, act[l.target.id]||0) / maxAct;
+      const delay = 250 + edgeHop * waveMs + waveMs * 0.3;
+      const defaultLinkOp = 0.65 + Math.min((l.weight||1) / 6, 1) * 0.35;
       d3.select(this).transition("spread-light").delay(delay).duration(350)
-        .attr("stroke-opacity", 0.2 + en * 0.7);
+        .attr("stroke-opacity", defaultLinkOp);
     });
 });
 
