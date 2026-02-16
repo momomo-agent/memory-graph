@@ -300,10 +300,20 @@ nodes.forEach(n => {
 });
 
 const sim = d3.forceSimulation(nodes)
-  .force("link", d3.forceLink(links).id(d => d.id).distance(d => 120 / Math.sqrt(d.weight || 1)).strength(d => 0.2 * Math.sqrt(d.weight || 1)))
-  .force("charge", d3.forceManyBody().strength(d => -180 - degree[d.id] * 8).distanceMax(700))
-  .force("center", d3.forceCenter(W / 2, H / 2).strength(0.015))
-  .force("collision", d3.forceCollide().radius(d => rScale(degree[d.id]||1) + 18))
+  .force("link", d3.forceLink(links).id(d => d.id).distance(d => {
+    const sd = degree[d.source.id || d.source] || 1;
+    const td = degree[d.target.id || d.target] || 1;
+    const hubBonus = (sd > 10 || td > 10) ? 80 : 0;
+    return (160 / Math.sqrt(d.weight || 1)) + hubBonus;
+  }).strength(d => {
+    const sd = degree[d.source.id || d.source] || 1;
+    const td = degree[d.target.id || d.target] || 1;
+    const hubDamp = (sd > 10 && td > 10) ? 0.3 : 1;
+    return 0.12 * Math.sqrt(d.weight || 1) * hubDamp;
+  }))
+  .force("charge", d3.forceManyBody().strength(d => -300 - degree[d.id] * 12).distanceMax(900))
+  .force("center", d3.forceCenter(W / 2, H / 2).strength(0.01))
+  .force("collision", d3.forceCollide().radius(d => rScale(degree[d.id]||1) + 24))
   .force("gravity", d3.forceRadial(0, W/2, H/2).strength(d => degree[d.id] <= 1 ? 0.04 : 0))
   // cluster attraction: same-cluster nodes pull together
   .force("cluster", d3.forceX().x(d => {
