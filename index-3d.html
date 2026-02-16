@@ -296,11 +296,13 @@ const Graph = ForceGraph3D()(container)
 window._Graph = Graph; // expose for debugging
 
 // Disable OrbitControls default zoom/pan — we handle it ourselves
+// Reverse rotation direction to match game-style (drag right = look right)
 setTimeout(() => {
   const controls = Graph.controls();
   if (controls) {
     controls.enableZoom = false;
     controls.enablePan = false;
+    controls.rotateSpeed = -1.0;
   }
 }, 100);
 
