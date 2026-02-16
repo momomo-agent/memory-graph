@@ -253,8 +253,9 @@ function updateHulls() {
   const hulls = hullG.selectAll("path").data(hullData, d => d.id);
   hulls.enter().append("path")
     .attr("fill", d => clusterColors[d.id] || "#666")
-    .attr("fill-opacity", 0.08)
+    .attr("fill-opacity", 0.04)
     .attr("stroke", "none")
+    .style("pointer-events", "none")
     .merge(hulls)
     .attr("d", d => {
       // Smooth catmull-rom curve through hull points

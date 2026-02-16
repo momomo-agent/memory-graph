@@ -374,11 +374,18 @@ function updateHighlight() {
   });
 }
 
-// === SPREAD ACTIVATION (wave propagation) ===
+// === SPREAD ACTIVATION (neural pulse propagation) ===
+// Pulse particles that travel along edges like neural signals
+const pulseParticles = [];
+let pulseAnimRunning = false;
+
 function triggerSpreadActivation(node) {
   spreadActive = true;
   spreadTimeouts.forEach(t => clearTimeout(t));
   spreadTimeouts = [];
+  // Clean up old pulse particles
+  pulseParticles.forEach(p => { if (p.mesh) Graph.scene().remove(p.mesh); });
+  pulseParticles.length = 0;
 
   const act = spreadActivation(node.id);
   const maxAct = Math.max(...Object.values(act));
@@ -387,6 +394,7 @@ function triggerSpreadActivation(node) {
   const depthMap = {}; depthMap[node.id] = 0;
   const bfsQueue = [node.id];
   const visited = new Set([node.id]);
+  const parentMap = {}; // track BFS tree for directed pulses
   while (bfsQueue.length) {
     const cur = bfsQueue.shift();
     const nb = adj[cur] || new Set();
@@ -394,61 +402,161 @@ function triggerSpreadActivation(node) {
       if (!visited.has(nid) && act[nid]) {
         visited.add(nid);
         depthMap[nid] = depthMap[cur] + 1;
+        parentMap[nid] = cur;
         bfsQueue.push(nid);
       }
     });
   }
-  const waveMs = 600;
 
-  // Dim all nodes immediately
+  // Dim everything
   nodes.forEach(n => {
     if (!n.__sphere) return;
-    n.__sphere.material.opacity = 0.01;
-    n.__sphere.material.emissiveIntensity = 0.02;
-    if (n.__label) n.__label.material.opacity = 0.01;
+    n.__sphere.material.opacity = 0.03;
+    n.__sphere.material.emissiveIntensity = 0.01;
+    if (n.__label) n.__label.material.opacity = 0.02;
   });
-  // Dim all links
   const gData = Graph.graphData();
-  gData.links.forEach(link => { if (link.__line) link.__line.material.opacity = 0.003; });
+  gData.links.forEach(link => { if (link.__line) link.__line.material.opacity = 0.008; });
 
-  // Wave: light up nodes by depth
+  // Light up seed node immediately with a flash
+  if (node.__sphere) {
+    node.__sphere.material.opacity = 1.0;
+    node.__sphere.material.emissiveIntensity = 1.0;
+    if (node.__label) node.__label.material.opacity = 1.0;
+  }
+
+  const scene = Graph.scene();
   const actSet = new Set(Object.keys(act));
-  Object.entries(act).forEach(([nid, energy]) => {
-    const norm = energy / maxAct;
-    const hop = depthMap[nid] || 0;
-    const delay = 250 + hop * waveMs;
+  const hopDelayMs = 400; // time between hops
+  const pulseTravelMs = 350; // how long a pulse takes to travel one edge
+
+  // For each activated node (except seed), schedule a pulse from its parent
+  Object.entries(depthMap).forEach(([nid, hop]) => {
+    if (hop === 0) return; // seed already lit
+    const parentId = parentMap[nid];
+    if (!parentId) return;
+    const energy = (act[nid] || 0) / maxAct;
+
+    const startDelay = hop * hopDelayMs;
+
+    // Create pulse particle
     const tid = setTimeout(() => {
-      const n = nodes.find(x => x.id === nid);
-      if (!n || !n.__sphere) return;
-      n.__sphere.material.opacity = 0.3 + norm * 0.7;
-      n.__sphere.material.emissiveIntensity = 0.2 + norm * 0.6;
-      if (n.__label) n.__label.material.opacity = 0.3 + norm * 0.7;
-    }, delay);
+      const srcNode = nodes.find(x => x.id === parentId);
+      const tgtNode = nodes.find(x => x.id === nid);
+      if (!srcNode || !tgtNode || srcNode.x === undefined || tgtNode.x === undefined) return;
+
+      const color = new THREE.Color(getColor(parentId));
+      const pulseGeo = new THREE.SphereGeometry(0.8 + energy * 1.2, 8, 6);
+      const pulseMat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.9,
+        depthWrite: false
+      });
+      const pulseMesh = new THREE.Mesh(pulseGeo, pulseMat);
+      pulseMesh.position.set(srcNode.x, srcNode.y, srcNode.z);
+      scene.add(pulseMesh);
+
+      // Also light up the edge as the pulse travels
+      const link = gData.links.find(l => {
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const tid2 = typeof l.target === 'object' ? l.target.id : l.target;
+        return (sid === parentId && tid2 === nid) || (sid === nid && tid2 === parentId);
+      });
+
+      pulseParticles.push({
+        mesh: pulseMesh,
+        srcX: srcNode.x, srcY: srcNode.y, srcZ: srcNode.z,
+        tgtX: tgtNode.x, tgtY: tgtNode.y, tgtZ: tgtNode.z,
+        startTime: performance.now(),
+        duration: pulseTravelMs,
+        energy,
+        targetNodeId: nid,
+        link,
+        done: false
+      });
+
+      if (!pulseAnimRunning) {
+        pulseAnimRunning = true;
+        requestAnimationFrame(animatePulses);
+      }
+    }, startDelay);
     spreadTimeouts.push(tid);
   });
+}
 
-  // Wave: light up edges
-  gData.links.forEach(link => {
-    if (!link.__line) return;
-    const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-    const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-    if (actSet.has(srcId) && actSet.has(tgtId)) {
-      const srcDepth = depthMap[srcId] || 0;
-      const tgtDepth = depthMap[tgtId] || 0;
-      const edgeHop = Math.min(srcDepth, tgtDepth);
-      const delay = 250 + edgeHop * waveMs + waveMs * 0.3;
-      const en = Math.min(act[srcId]||0, act[tgtId]||0) / maxAct;
-      const tid = setTimeout(() => {
-        if (link.__line) link.__line.material.opacity = 0.3 + en * 0.7;
-      }, delay);
-      spreadTimeouts.push(tid);
+function animatePulses(now) {
+  let anyActive = false;
+  pulseParticles.forEach(p => {
+    if (p.done) return;
+    const elapsed = now - p.startTime;
+    const t = Math.min(elapsed / p.duration, 1);
+
+    // Move pulse along edge
+    p.mesh.position.set(
+      p.srcX + (p.tgtX - p.srcX) * t,
+      p.srcY + (p.tgtY - p.srcY) * t,
+      p.srcZ + (p.tgtZ - p.srcZ) * t
+    );
+
+    // Pulse glow: bright in middle, fade at ends
+    const glow = Math.sin(t * Math.PI);
+    p.mesh.material.opacity = 0.4 + glow * 0.6;
+    const scale = 0.8 + glow * 0.5;
+    p.mesh.scale.set(scale, scale, scale);
+
+    // Light up the edge as pulse passes
+    if (p.link && p.link.__line) {
+      p.link.__line.material.opacity = Math.max(p.link.__line.material.opacity, 0.15 + glow * 0.5 * p.energy);
+    }
+
+    if (t >= 1) {
+      // Pulse arrived — flash the target node
+      p.done = true;
+      Graph.scene().remove(p.mesh);
+      p.mesh.geometry.dispose();
+      p.mesh.material.dispose();
+
+      const tgtNode = nodes.find(x => x.id === p.targetNodeId);
+      if (tgtNode && tgtNode.__sphere) {
+        const finalOpacity = 0.2 + p.energy * 0.8;
+        const finalEmissive = 0.1 + p.energy * 0.7;
+        // Flash bright then settle
+        tgtNode.__sphere.material.opacity = 1.0;
+        tgtNode.__sphere.material.emissiveIntensity = 1.0;
+        if (tgtNode.__label) tgtNode.__label.material.opacity = 1.0;
+        // Settle down after flash
+        setTimeout(() => {
+          if (tgtNode.__sphere) {
+            tgtNode.__sphere.material.opacity = finalOpacity;
+            tgtNode.__sphere.material.emissiveIntensity = finalEmissive;
+            if (tgtNode.__label) tgtNode.__label.material.opacity = finalOpacity;
+          }
+        }, 150);
+      }
+    } else {
+      anyActive = true;
     }
   });
+
+  if (anyActive || pulseParticles.some(p => !p.done)) {
+    requestAnimationFrame(animatePulses);
+  } else {
+    pulseAnimRunning = false;
+  }
 }
 
 function resetSpread() {
   spreadTimeouts.forEach(t => clearTimeout(t));
   spreadTimeouts = [];
+  // Clean up pulse particles
+  pulseParticles.forEach(p => {
+    if (p.mesh && !p.done) {
+      Graph.scene().remove(p.mesh);
+      p.mesh.geometry.dispose();
+      p.mesh.material.dispose();
+    }
+  });
+  pulseParticles.length = 0;
+  pulseAnimRunning = false;
   spreadActive = false;
   clickedNode = null;
 
