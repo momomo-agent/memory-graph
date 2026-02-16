@@ -57,7 +57,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="tooltip"></div>
 <div id="legend"></div>
 <div id="stats"></div>
-<div id="controls">鼠标拖拽旋转 · 滚轮前进后退 · WASD穿梭 · 点击节点扩散 · 点击空白恢复</div>
+<div id="controls">鼠标拖拽旋转 · 滚轮前进后退 · WASD穿梭 · 点击节点扩散 · 点击空白/ESC恢复</div>
 <div id="link-tooltip"></div>
 <div id="graph-container"></div>
 
@@ -197,8 +197,8 @@ const Graph = ForceGraph3D()(container)
     const sphere = new THREE.Mesh(geometry, material);
     group.add(sphere);
 
-    // Invisible hitbox — larger sphere for consistent hover/click detection
-    const hitGeo = new THREE.SphereGeometry(radius * 2.5, 8, 6);
+    // Invisible hitbox — slightly larger sphere for consistent hover/click detection
+    const hitGeo = new THREE.SphereGeometry(radius * 1.5, 8, 6);
     const hitMat = new THREE.MeshBasicMaterial({ visible: false });
     const hitbox = new THREE.Mesh(hitGeo, hitMat);
     group.add(hitbox);
@@ -282,22 +282,7 @@ const Graph = ForceGraph3D()(container)
     triggerSpreadActivation(node);
     showTooltip(node);
   })
-  .onBackgroundClick(() => {
-    resetSpread();
-    // Restore all nodes/links to default opacity
-    litNodes.clear();
-    litLinks.clear();
-    nodes.forEach(n => {
-      if (!n.__sphere) return;
-      n.__sphere.material.opacity = 0.85;
-      n.__sphere.material.emissiveIntensity = 0.3;
-      if (n.__label) n.__label.material.opacity = 0.85;
-    });
-    const gData = Graph.graphData();
-    gData.links.forEach(link => { if (link.__lineObj) link.__lineObj.material.opacity = 0.4; });
-    clickedNode = null;
-    document.getElementById('tooltip').style.display = 'none';
-  });
+  .onBackgroundClick(() => { restoreAll(); });
 
 window._Graph = Graph; // expose for debugging
 
@@ -605,6 +590,22 @@ function animatePulses(now) {
   }
 }
 
+function restoreAll() {
+  resetSpread();
+  litNodes.clear();
+  litLinks.clear();
+  nodes.forEach(n => {
+    if (!n.__sphere) return;
+    n.__sphere.material.opacity = 0.85;
+    n.__sphere.material.emissiveIntensity = 0.3;
+    if (n.__label) n.__label.material.opacity = 0.85;
+  });
+  const gData = Graph.graphData();
+  gData.links.forEach(link => { if (link.__lineObj) link.__lineObj.material.opacity = 0.4; });
+  clickedNode = null;
+  document.getElementById('tooltip').style.display = 'none';
+}
+
 function lightNode(nid) {
   if (litNodes.has(nid)) return;
   litNodes.add(nid);
@@ -876,6 +877,7 @@ const keysDown = new Set();
 let isDragging = false;
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Escape') { restoreAll(); return; }
   keysDown.add(e.code);
 });
 window.addEventListener('keyup', e => keysDown.delete(e.code));
