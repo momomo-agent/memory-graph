@@ -57,7 +57,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="tooltip"></div>
 <div id="legend"></div>
 <div id="stats"></div>
-<div id="controls">鼠标拖拽旋转 · 滚轮缩放 · 右键平移</div>
+<div id="controls">鼠标拖拽旋转 · 滚轮缩放 · 右键平移 · WASD平移 · Space/Shift升降 · 方向键旋转 · QE缩放</div>
 <div id="link-tooltip"></div>
 <div id="graph-container"></div>
 
@@ -763,7 +763,7 @@ setTimeout(() => {
 
 // === INITIAL CAMERA ===
 // Immediate: set a reasonable distance so it's not pitch black
-Graph.cameraPosition({ x: 0, y: 0, z: 350 });
+Graph.cameraPosition({ x: 0, y: 120, z: 300 });
 // Early zoomToFit attempts while layout is still running
 setTimeout(() => { Graph.zoomToFit(400, 60); }, 1500);
 setTimeout(() => { Graph.zoomToFit(500, 60); }, 3000);
@@ -856,42 +856,49 @@ requestAnimationFrame(animate);
 const keysDown = new Set();
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
-  keysDown.add(e.key);
+  keysDown.add(e.code);
 });
-window.addEventListener('keyup', e => keysDown.delete(e.key));
+window.addEventListener('keyup', e => keysDown.delete(e.code));
 
 function tickKeyboard() {
   requestAnimationFrame(tickKeyboard);
   if (keysDown.size === 0) return;
   const cam = Graph.camera();
-  const speed = 2;
-  const rotSpeed = 0.02;
-  // WASD = pan (move camera target)
-  const right = new THREE.Vector3();
-  const up = new THREE.Vector3(0, 1, 0);
+  const controls = Graph.controls();
+  const speed = 3.5;
+  const rotSpeed = 0.015;
+
+  // Compute camera-relative directions (projected onto XZ plane for intuitive movement)
   const forward = new THREE.Vector3();
   cam.getWorldDirection(forward);
-  right.crossVectors(forward, up).normalize();
-  const panForward = new THREE.Vector3().crossVectors(up, right).normalize();
+  // Project forward onto XZ plane for horizontal movement
+  forward.y = 0;
+  forward.normalize();
+  if (forward.length() < 0.01) forward.set(0, 0, -1); // fallback
+  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
   let dx = 0, dy = 0, dz = 0;
-  if (keysDown.has('w') || keysDown.has('W')) { dx += panForward.x * speed; dy += panForward.y * speed; dz += panForward.z * speed; }
-  if (keysDown.has('s') || keysDown.has('S')) { dx -= panForward.x * speed; dy -= panForward.y * speed; dz -= panForward.z * speed; }
-  if (keysDown.has('a') || keysDown.has('A')) { dx -= right.x * speed; dy -= right.y * speed; dz -= right.z * speed; }
-  if (keysDown.has('d') || keysDown.has('D')) { dx += right.x * speed; dy += right.y * speed; dz += right.z * speed; }
+  if (keysDown.has('KeyW')) { dx += forward.x * speed; dz += forward.z * speed; }
+  if (keysDown.has('KeyS')) { dx -= forward.x * speed; dz -= forward.z * speed; }
+  if (keysDown.has('KeyA')) { dx -= right.x * speed; dz -= right.z * speed; }
+  if (keysDown.has('KeyD')) { dx += right.x * speed; dz += right.z * speed; }
+  if (keysDown.has('Space'))  { dy += speed; }
+  if (keysDown.has('ShiftLeft') || keysDown.has('ShiftRight')) { dy -= speed; }
+
   // Arrow keys = orbit rotation
-  const controls = Graph.controls();
   if (keysDown.has('ArrowLeft'))  { controls.rotateLeft(rotSpeed); }
   if (keysDown.has('ArrowRight')) { controls.rotateLeft(-rotSpeed); }
   if (keysDown.has('ArrowUp'))    { controls.rotateUp(rotSpeed); }
   if (keysDown.has('ArrowDown'))  { controls.rotateUp(-rotSpeed); }
-  // Q/E = zoom
-  if (keysDown.has('q') || keysDown.has('Q')) { controls.dollyIn(1.02); }
-  if (keysDown.has('e') || keysDown.has('E')) { controls.dollyOut(1.02); }
+  // Q/E = zoom (dolly in/out)
+  if (keysDown.has('KeyQ')) { controls.dollyIn(1.02); }
+  if (keysDown.has('KeyE')) { controls.dollyOut(1.02); }
 
   if (dx || dy || dz) {
-    const pos = Graph.cameraPosition();
-    Graph.cameraPosition({ x: pos.x + dx, y: pos.y + dy, z: pos.z + dz });
+    // Move both camera AND target together (true pan)
+    const offset = new THREE.Vector3(dx, dy, dz);
+    cam.position.add(offset);
+    controls.target.add(offset);
   }
   controls.update();
 }
