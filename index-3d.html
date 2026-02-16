@@ -936,11 +936,28 @@ function animate(time) {
       return;
     }
 
-    // Lerp position along edge
-    const x = src.x + (tgt.x - src.x) * p.t;
-    const y = src.y + (tgt.y - src.y) * p.t;
-    const z = src.z + (tgt.z - src.z) * p.t;
-    p.mesh.position.set(x, y, z);
+    // Sample position along the curve
+    const cl = p.link.__customLine;
+    if (cl) {
+      const pos = cl.geometry.getAttribute('position');
+      if (pos && pos.count > 1) {
+        const fIdx = p.t * (pos.count - 1);
+        const i0 = Math.floor(fIdx);
+        const i1 = Math.min(i0 + 1, pos.count - 1);
+        const f = fIdx - i0;
+        p.mesh.position.set(
+          pos.getX(i0) + (pos.getX(i1) - pos.getX(i0)) * f,
+          pos.getY(i0) + (pos.getY(i1) - pos.getY(i0)) * f,
+          pos.getZ(i0) + (pos.getZ(i1) - pos.getZ(i0)) * f
+        );
+      }
+    } else {
+      p.mesh.position.set(
+        src.x + (tgt.x - src.x) * p.t,
+        src.y + (tgt.y - src.y) * p.t,
+        src.z + (tgt.z - src.z) * p.t
+      );
+    }
 
     // Fade in/out near endpoints
     const fade = Math.min(p.t, 1 - p.t) * 4;
