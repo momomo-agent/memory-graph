@@ -295,6 +295,15 @@ const Graph = ForceGraph3D()(container)
 
 window._Graph = Graph; // expose for debugging
 
+// Disable OrbitControls default zoom/pan — we handle it ourselves
+setTimeout(() => {
+  const controls = Graph.controls();
+  if (controls) {
+    controls.enableZoom = false;
+    controls.enablePan = false;
+  }
+}, 100);
+
 // Configure forces via the graph's internal d3 engine
 // Customize charge force
 const chargeForce = Graph.d3Force('charge');
@@ -812,18 +821,38 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => keysDown.delete(e.code));
 
-// Scroll wheel = fly forward/backward
+// Scroll/trackpad = fly through the graph
+// Two-finger drag (deltaX/deltaY without ctrlKey) = strafe + forward/back
+// Pinch zoom (ctrlKey + deltaY) = forward/back
 window.addEventListener('wheel', e => {
   if (e.target.tagName === 'INPUT') return;
+  e.preventDefault();
   const cam = Graph.camera();
   const controls = Graph.controls();
-  const dir = new THREE.Vector3();
-  cam.getWorldDirection(dir);
-  const speed = e.deltaY < 0 ? 8 : -8;
-  cam.position.addScaledVector(dir, speed);
-  controls.target.addScaledVector(dir, speed);
+  const forward = new THREE.Vector3();
+  cam.getWorldDirection(forward);
+  const forwardH = forward.clone(); forwardH.y = 0;
+  if (forwardH.lengthSq() < 0.001) forwardH.set(0, 0, -1);
+  forwardH.normalize();
+  const right = new THREE.Vector3().crossVectors(forwardH, new THREE.Vector3(0, 1, 0)).normalize();
+
+  if (e.ctrlKey) {
+    // Pinch zoom = fly forward/back
+    const speed = e.deltaY < 0 ? 6 : -6;
+    cam.position.addScaledVector(forward, speed);
+    controls.target.addScaledVector(forward, speed);
+  } else {
+    // Two-finger drag = strafe (X) + forward/back (Y)
+    const speedX = -e.deltaX * 0.15;
+    const speedY = -e.deltaY * 0.15;
+    const move = new THREE.Vector3();
+    move.addScaledVector(right, speedX);
+    move.addScaledVector(forwardH, speedY);
+    cam.position.add(move);
+    controls.target.add(move);
+  }
   controls.update();
-}, { passive: true });
+}, { passive: false });
 
 function tickKeyboard() {
   requestAnimationFrame(tickKeyboard);
