@@ -241,25 +241,64 @@ const Graph = ForceGraph3D()(container)
   })
   .nodeThreeObjectExtend(false)
   // Link appearance — built-in curved links with blended colors
-  .linkCurvature(0.25)
-  .linkCurveRotation(link => {
-    const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-    const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-    return (srcId + tgtId).split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 628 / 100;
-  })
-  .linkColor(link => {
+  .linkThreeObject(link => {
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
     const c1 = new THREE.Color(getColor(srcId));
     const c2 = new THREE.Color(getColor(tgtId));
     c1.lerp(c2, 0.5);
-    return '#' + c1.getHexString();
-  })
-  .linkWidth(link => {
     const w = link.weight || 1;
-    return 0.15 + Math.min(w / 10, 1) * 1.2;
+    const width = 0.15 + Math.min(w / 10, 1) * 1.2;
+
+    const segments = 30;
+    const positions = new Float32Array((segments + 1) * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+    const mat = new THREE.LineBasicMaterial({
+      color: c1, transparent: true, opacity: 0.4,
+      depthWrite: false, linewidth: width
+    });
+    const line = new THREE.Line(geo, mat);
+    line.__segments = segments;
+    link.__customLine = line;
+    return line;
   })
-  .linkOpacity(0.4)
+  .linkPositionUpdate((obj, { start, end }, link) => {
+    const segments = obj.__segments || 30;
+    const pos = obj.geometry.getAttribute('position');
+    if (!pos || pos.count !== segments + 1) return;
+
+    // Compute curvature direction
+    const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+    const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+    const seed = (srcId + tgtId).split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 628 / 100;
+    const curvature = 0.25;
+
+    const dx = end.x - start.x, dy = end.y - start.y, dz = end.z - start.z;
+    const len = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+    // Perpendicular vector for curvature
+    const cx = Math.cos(seed), sz = Math.sin(seed);
+    const nx = dy * cx - dz * sz;
+    const ny = dz * cx - dx * cx;
+    const nz = dx * sz - dy * cx;
+    const nlen = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1;
+    const offset = len * curvature;
+    const mx = (start.x + end.x) / 2 + (nx / nlen) * offset;
+    const my = (start.y + end.y) / 2 + (ny / nlen) * offset;
+    const mz = (start.z + end.z) / 2 + (nz / nlen) * offset;
+
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const t1 = 1 - t;
+      pos.setXYZ(i,
+        t1*t1*start.x + 2*t1*t*mx + t*t*end.x,
+        t1*t1*start.y + 2*t1*t*my + t*t*end.y,
+        t1*t1*start.z + 2*t1*t*mz + t*t*end.z
+      );
+    }
+    pos.needsUpdate = true;
+  })
   // Force layout tuning
   .d3AlphaDecay(0.02)
   .d3VelocityDecay(0.3)
@@ -368,7 +407,7 @@ function updateHighlight() {
     });
     const gData = Graph.graphData();
     gData.links.forEach(link => {
-      if (link.__lineObj) link.__lineObj.material.opacity = 0.4;
+      if (link.__customLine) link.__customLine.material.opacity = 0.4;
     });
     return;
   }
@@ -400,14 +439,14 @@ function updateHighlight() {
 
   const gData = Graph.graphData();
   gData.links.forEach(link => {
-    if (!link.__lineObj) return;
+    if (!link.__customLine) return;
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
     if (actSet.has(srcId) && actSet.has(tgtId)) {
       const e = Math.min((act[srcId] || 0), (act[tgtId] || 0)) / maxAct;
-      link.__lineObj.material.opacity = 0.2 + e * 0.6;
+      link.__customLine.material.opacity = 0.2 + e * 0.6;
     } else {
-      link.__lineObj.material.opacity = 0.01;
+      link.__customLine.material.opacity = 0.01;
     }
   });
 }
@@ -421,8 +460,10 @@ function triggerSpreadActivation(node) {
   spreadActive = true;
   spreadTimeouts.forEach(t => clearTimeout(t));
   spreadTimeouts = [];
-  // Clean up old pulse particles
-  pulseParticles.forEach(p => { if (p.currentLine) Graph.scene().remove(p.currentLine); });
+  // Clean up old pulse particles — restore drawRange
+  pulseParticles.forEach(p => {
+    if (p.lineObj && p.totalVerts > 0) p.lineObj.geometry.setDrawRange(0, p.totalVerts);
+  });
   pulseParticles.length = 0;
 
   const act = spreadActivation(node.id);
@@ -460,7 +501,7 @@ function triggerSpreadActivation(node) {
   const gData = Graph.graphData();
   gData.links.forEach((link, i) => { 
     if (litLinks.has(i)) return; // already lit
-    if (link.__lineObj) link.__lineObj.material.opacity = 0; 
+    if (link.__customLine) link.__customLine.material.opacity = 0; 
   });
 
   // Light up seed node with glow-in animation
@@ -504,60 +545,42 @@ function triggerSpreadActivation(node) {
         return (sid === parentId && tid2 === nid) || (sid === nid && tid2 === parentId);
       });
 
-      // Don't light source node here — it should already be lit from previous hop
-      // Target node will be lit when current arrives
+      // Use the custom line directly — animate drawRange from 0 to full
+      if (link && link.__customLine) {
+        const lineObj = link.__customLine;
+        const segments = lineObj.__segments || 30;
+        const totalVerts = segments + 1;
 
-      // Create electric current overlay line
-      const segments = 30;
-      const positions = new Float32Array((segments + 1) * 3);
-      const color = new THREE.Color(getColor(parentId)).lerp(new THREE.Color(getColor(nid)), 0.5);
-      // Brighter version for the current
-      const glowColor = color.clone().multiplyScalar(2.0);
+        // Determine direction: current flows from parent to target
+        const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+        const reverse = srcId !== parentId;
 
-      // Compute bezier curve points
-      const mx = (srcNode.x + tgtNode.x) / 2;
-      const my = (srcNode.y + tgtNode.y) / 2;
-      const mz = (srcNode.z + tgtNode.z) / 2;
-      const dx = tgtNode.x - srcNode.x, dy = tgtNode.y - srcNode.y, dz = tgtNode.z - srcNode.z;
-      const len = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
-      const curvature = Math.min(len * 0.15, 20);
-      let px = -dz, pz = dx;
-      const plen = Math.sqrt(px*px + pz*pz) || 1;
-      px = px/plen * curvature; pz = pz/plen * curvature;
-      const cpx = mx + px, cpy = my, cpz = mz + pz;
+        // Make it bright, but draw nothing yet
+        lineObj.material.opacity = 1.0;
+        lineObj.geometry.setDrawRange(0, 0);
 
-      for (let i = 0; i <= segments; i++) {
-        const t = i / segments;
-        const t1 = 1 - t;
-        positions[i*3]   = t1*t1*srcNode.x + 2*t1*t*cpx + t*t*tgtNode.x;
-        positions[i*3+1] = t1*t1*srcNode.y + 2*t1*t*cpy + t*t*tgtNode.y;
-        positions[i*3+2] = t1*t1*srcNode.z + 2*t1*t*cpz + t*t*tgtNode.z;
+        // Mark as lit
+        const li = gData.links.indexOf(link);
+        if (li >= 0) litLinks.add(li);
+
+        pulseParticles.push({
+          lineObj,
+          totalVerts,
+          reverse,
+          startTime: performance.now(),
+          duration: pulseTravelMs,
+          energy,
+          targetNodeId: nid,
+          targetNode: tgtNode,
+          sourceNode: srcNode,
+          link,
+          done: false
+        });
+      } else {
+        // No custom line — just light nodes
+        lightNode(nid);
+        lightNode(parentId);
       }
-
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      // Start with 0 vertices drawn — will animate drawRange
-      geo.setDrawRange(0, 0);
-
-      const mat = new THREE.LineBasicMaterial({
-        color: glowColor, transparent: true, opacity: 1.0,
-        depthWrite: false, linewidth: 2
-      });
-      const currentLine = new THREE.Line(geo, mat);
-      scene.add(currentLine);
-
-      pulseParticles.push({
-        currentLine,
-        segments,
-        startTime: performance.now(),
-        duration: pulseTravelMs,
-        energy,
-        targetNodeId: nid,
-        targetNode: tgtNode,
-        sourceNode: srcNode,
-        link,
-        done: false
-      });
 
       if (!pulseAnimRunning) {
         pulseAnimRunning = true;
@@ -577,68 +600,25 @@ function animatePulses(now) {
     const elapsed = now - p.startTime;
     const t = Math.min(elapsed / p.duration, 1);
 
-    // Animate drawRange — electric current extends from source to target
-    const vertexCount = Math.floor(t * (p.segments + 1));
-    p.currentLine.geometry.setDrawRange(0, vertexCount);
-
-    // Fade the glow line slightly as it completes
-    p.currentLine.material.opacity = 0.6 + 0.4 * Math.sin(t * Math.PI);
-
-    // DON'T light the underlying edge during animation —
-    // the overlay currentLine IS the visual. Only light the edge when current arrives.
+    // Animate drawRange on the custom line
+    if (p.totalVerts > 0) {
+      const count = Math.max(1, Math.floor(t * p.totalVerts));
+      if (p.reverse) {
+        p.lineObj.geometry.setDrawRange(p.totalVerts - count, count);
+      } else {
+        p.lineObj.geometry.setDrawRange(0, count);
+      }
+    }
 
     if (t >= 1) {
-      // Current reached target — crossfade: overlay fades out while underlying edge fades in
       p.done = true;
-      
-      // Light endpoints immediately (they animate via lightNode)
+      // Restore full draw range — line stays visible
+      if (p.totalVerts > 0) {
+        p.lineObj.geometry.setDrawRange(0, p.totalVerts);
+      }
+      // Light both endpoints
       if (p.targetNode) lightNode(p.targetNode.id);
       if (p.sourceNode) lightNode(p.sourceNode.id);
-      
-      // Find the link (retry if needed)
-      const theLink = p.link || (() => {
-        const gData = Graph.graphData();
-        return gData.links.find(l => {
-          const sid = typeof l.source === 'object' ? l.source.id : l.source;
-          const tid2 = typeof l.target === 'object' ? l.target.id : l.target;
-          return (sid === p.sourceNode?.id && tid2 === p.targetNode?.id) || 
-                 (sid === p.targetNode?.id && tid2 === p.sourceNode?.id);
-        });
-      })();
-      
-      // Mark as lit
-      if (theLink) {
-        const gData = Graph.graphData();
-        const li = gData.links.indexOf(theLink);
-        if (li >= 0) litLinks.add(li);
-      }
-      
-      // Crossfade over 300ms: overlay out, underlying in
-      const fadeStart = performance.now();
-      const fadeDur = 300;
-      const underlyingObj = theLink && theLink.__lineObj;
-      const underStart = underlyingObj ? underlyingObj.material.opacity : 0;
-      
-      const crossfade = () => {
-        const ft = Math.min((performance.now() - fadeStart) / fadeDur, 1);
-        const ease = ft * (2 - ft);
-        // Overlay fades out
-        p.currentLine.material.opacity = 1.0 - ft;
-        // Underlying fades in
-        if (underlyingObj) {
-          underlyingObj.material.opacity = underStart + (1.0 - underStart) * ease;
-        }
-        if (ft < 1) {
-          requestAnimationFrame(crossfade);
-        } else {
-          Graph.scene().remove(p.currentLine);
-          p.currentLine.geometry.dispose();
-          p.currentLine.material.dispose();
-          // Ensure final state
-          if (underlyingObj) underlyingObj.material.opacity = 1.0;
-        }
-      };
-      requestAnimationFrame(crossfade);
     } else {
       anyActive = true;
     }
@@ -663,7 +643,7 @@ function restoreAll(instant) {
       n.__sphere.material.emissiveIntensity = 0.3;
       if (n.__label) n.__label.material.opacity = 0.85;
     });
-    gData.links.forEach(link => { if (link.__lineObj) link.__lineObj.material.opacity = 0.4; });
+    gData.links.forEach(link => { if (link.__customLine) link.__customLine.material.opacity = 0.4; });
   } else {
     const nSnaps = [];
     nodes.forEach(n => {
@@ -672,7 +652,7 @@ function restoreAll(instant) {
     });
     const lSnaps = [];
     gData.links.forEach(link => {
-      if (link.__lineObj) lSnaps.push({ obj: link.__lineObj, o0: link.__lineObj.material.opacity });
+      if (link.__customLine) lSnaps.push({ obj: link.__customLine, o0: link.__customLine.material.opacity });
     });
     const t0 = performance.now();
     (function anim() {
@@ -711,12 +691,12 @@ function lightNode(nid) {
 }
 
 function lightLink(link) {
-  if (!link || !link.__lineObj) return;
+  if (!link || !link.__customLine) return;
   const gData = Graph.graphData();
   const li = gData.links.indexOf(link);
   if (li >= 0) litLinks.add(li);
   // Animate line opacity
-  const obj = link.__lineObj;
+  const obj = link.__customLine;
   const s0 = obj.material.opacity;
   const t0 = performance.now();
   (function anim() {
@@ -734,13 +714,9 @@ function lightLink(link) {
 function resetSpread() {
   spreadTimeouts.forEach(t => clearTimeout(t));
   spreadTimeouts = [];
-  // Clean up pulse particles
+  // Clean up pulse particles — restore drawRange
   pulseParticles.forEach(p => {
-    if (p.currentLine && !p.done) {
-      Graph.scene().remove(p.currentLine);
-      p.currentLine.geometry.dispose();
-      p.currentLine.material.dispose();
-    }
+    if (p.lineObj && p.totalVerts > 0) p.lineObj.geometry.setDrawRange(0, p.totalVerts);
   });
   pulseParticles.length = 0;
   pulseAnimRunning = false;
