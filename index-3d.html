@@ -480,8 +480,8 @@ function triggerSpreadActivation(node) {
         return (sid === parentId && tid2 === nid) || (sid === nid && tid2 === parentId);
       });
 
-      // Light source node immediately
-      lightNode(parentId);
+      // Don't light source node here — it should already be lit from previous hop
+      // Target node will be lit when current arrives
 
       // Create electric current overlay line
       const segments = 30;
@@ -560,24 +560,11 @@ function animatePulses(now) {
     // Fade the glow line slightly as it completes
     p.currentLine.material.opacity = 0.6 + 0.4 * Math.sin(t * Math.PI);
 
-    // Gradually light up the underlying edge too
-    if (p.link && p.link.__lineObj) {
-      const edgeOpacity = 0.1 + t * 0.9;
-      p.link.__lineObj.material.opacity = Math.max(p.link.__lineObj.material.opacity, edgeOpacity);
-      if (!p.__linkMarked) {
-        const gData = Graph.graphData();
-        const li = gData.links.indexOf(p.link);
-        if (li >= 0) litLinks.add(li);
-        const sid = typeof p.link.source === 'object' ? p.link.source.id : p.link.source;
-        const tid2 = typeof p.link.target === 'object' ? p.link.target.id : p.link.target;
-        lightNode(sid);
-        lightNode(tid2);
-        p.__linkMarked = true;
-      }
-    }
+    // DON'T light the underlying edge during animation —
+    // the overlay currentLine IS the visual. Only light the edge when current arrives.
 
     if (t >= 1) {
-      // Current reached target — clean up overlay, keep edge lit
+      // Current reached target — clean up overlay, light up the underlying edge
       p.done = true;
       // Fade out the glow line over 300ms
       const fadeStart = performance.now();
@@ -594,7 +581,7 @@ function animatePulses(now) {
       };
       requestAnimationFrame(fadeLine);
 
-      // Ensure edge stays fully bright and both endpoints lit
+      // NOW light the underlying edge and both endpoints
       if (p.link) lightLink(p.link);
       if (p.targetNode) lightNode(p.targetNode.id);
       if (p.sourceNode) lightNode(p.sourceNode.id);
