@@ -160,6 +160,7 @@ nodes.forEach(n => { n.__breathPhase = Math.random() * Math.PI * 2; });
 
 // Spread activation state
 let spreadActive = false;
+let spreadAnimDone = false;
 const litNodes = new Set(); // nodes lit by spread activation
 const litLinks = new Set(); // link indices lit by spread activation
 let spreadTimeouts = [];
@@ -402,6 +403,7 @@ let pulseAnimRunning = false;
 
 function triggerSpreadActivation(node) {
   spreadActive = true;
+  spreadAnimDone = false;
   spreadTimeouts.forEach(t => clearTimeout(t));
   spreadTimeouts = [];
   // Clean up old pulse particles
@@ -594,6 +596,9 @@ function animatePulses(now) {
     requestAnimationFrame(animatePulses);
   } else {
     pulseAnimRunning = false;
+    // All currents done — stop continuous dim enforcement
+    // Keep spreadActive true so hover doesn't override, but mark animation complete
+    spreadAnimDone = true;
   }
 }
 
@@ -651,6 +656,7 @@ function resetSpread() {
   pulseParticles.length = 0;
   pulseAnimRunning = false;
   spreadActive = false;
+  spreadAnimDone = false;
   clickedNode = null;
   // Don't restore opacity — keep activated nodes/links lit
 }
@@ -843,9 +849,9 @@ function animate(time) {
   requestAnimationFrame(animate);
   const t = time * 0.001;
 
-  // During spread: continuously enforce dim on non-lit links/nodes
-  // This catches __lineObj created after the initial dim pass
-  if (spreadActive) {
+  // During spread animation: continuously enforce dim on non-lit links/nodes
+  // Only while animation is running, not after it completes
+  if (spreadActive && !spreadAnimDone) {
     const gData = Graph.graphData();
     gData.links.forEach((link, i) => {
       if (!link.__lineObj) return;
