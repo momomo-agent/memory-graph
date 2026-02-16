@@ -197,8 +197,8 @@ const Graph = ForceGraph3D()(container)
     const sphere = new THREE.Mesh(geometry, material);
     group.add(sphere);
 
-    // Invisible hitbox — slightly larger sphere for consistent hover/click detection
-    const hitGeo = new THREE.SphereGeometry(radius * 1.5, 8, 6);
+    // Invisible hitbox — slightly larger for hover/click detection
+    const hitGeo = new THREE.SphereGeometry(radius * 1.2, 8, 6);
     const hitMat = new THREE.MeshBasicMaterial({ visible: false });
     const hitbox = new THREE.Mesh(hitGeo, hitMat);
     group.add(hitbox);
