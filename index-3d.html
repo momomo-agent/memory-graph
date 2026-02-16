@@ -177,7 +177,6 @@ nodes.forEach(n => { n.__breathPhase = Math.random() * Math.PI * 2; });
 
 // Spread activation state
 let spreadActive = false;
-let spreadAnimDone = false;
 const litNodes = new Set(); // nodes lit by spread activation
 const litLinks = new Set(); // link indices lit by spread activation
 let spreadTimeouts = [];
@@ -420,7 +419,6 @@ let pulseAnimRunning = false;
 
 function triggerSpreadActivation(node) {
   spreadActive = true;
-  spreadAnimDone = false;
   spreadTimeouts.forEach(t => clearTimeout(t));
   spreadTimeouts = [];
   // Clean up old pulse particles
@@ -451,24 +449,21 @@ function triggerSpreadActivation(node) {
     }
   }
 
-  // Dim nodes/links instantly
-  const gData = Graph.graphData();
+  // Dim only nodes/links not previously lit by spread
   nodes.forEach(n => {
     if (!n.__sphere) return;
-    if (litNodes.has(n.id)) return;
+    if (litNodes.has(n.id)) return; // already lit, keep bright
     n.__sphere.material.opacity = 0.03;
     n.__sphere.material.emissiveIntensity = 0.01;
     if (n.__label) n.__label.material.opacity = 0.02;
   });
-  gData.links.forEach((link, i) => {
-    if (litLinks.has(i)) return;
-    if (link.__lineObj) {
-      link.__lineObj.material.opacity = 0;
-      link.__lineObj.visible = false; // hide completely so library can't override opacity
-    }
+  const gData = Graph.graphData();
+  gData.links.forEach((link, i) => { 
+    if (litLinks.has(i)) return; // already lit
+    if (link.__lineObj) link.__lineObj.material.opacity = 0; 
   });
 
-  // Light up seed node instantly
+  // Light up seed node immediately with a flash
   litNodes.add(node.id);
   if (node.__sphere) {
     node.__sphere.material.opacity = 1.0;
@@ -604,19 +599,7 @@ function animatePulses(now) {
       requestAnimationFrame(fadeLine);
 
       // NOW light the underlying edge and both endpoints
-      if (p.link) {
-        lightLink(p.link);
-      } else {
-        // Retry finding the link — it may not have existed when pulse was created
-        const gData = Graph.graphData();
-        const foundLink = gData.links.find(l => {
-          const sid = typeof l.source === 'object' ? l.source.id : l.source;
-          const tid2 = typeof l.target === 'object' ? l.target.id : l.target;
-          return (sid === p.sourceNode?.id && tid2 === p.targetNode?.id) || 
-                 (sid === p.targetNode?.id && tid2 === p.sourceNode?.id);
-        });
-        if (foundLink) lightLink(foundLink);
-      }
+      if (p.link) lightLink(p.link);
       if (p.targetNode) lightNode(p.targetNode.id);
       if (p.sourceNode) lightNode(p.sourceNode.id);
     } else {
@@ -628,9 +611,6 @@ function animatePulses(now) {
     requestAnimationFrame(animatePulses);
   } else {
     pulseAnimRunning = false;
-    // All currents done — stop continuous dim enforcement
-    // Keep spreadActive true so hover doesn't override, but mark animation complete
-    spreadAnimDone = true;
   }
 }
 
@@ -645,7 +625,7 @@ function restoreAll() {
     if (n.__label) n.__label.material.opacity = 0.85;
   });
   const gData = Graph.graphData();
-  gData.links.forEach(link => { if (link.__lineObj) { link.__lineObj.visible = true; link.__lineObj.material.opacity = 0.4; } });
+  gData.links.forEach(link => { if (link.__lineObj) link.__lineObj.material.opacity = 0.4; });
   clickedNode = null;
   document.getElementById('tooltip').style.display = 'none';
 }
@@ -662,24 +642,16 @@ function lightNode(nid) {
 }
 
 function lightLink(link) {
-  if (!link) return;
-  const doLight = () => {
-    if (link.__lineObj) {
-      link.__lineObj.visible = true;
-      link.__lineObj.material.opacity = 1.0;
-      const gData = Graph.graphData();
-      const li = gData.links.indexOf(link);
-      if (li >= 0) litLinks.add(li);
-    } else {
-      requestAnimationFrame(doLight);
-      return;
-    }
-    const sid = typeof link.source === 'object' ? link.source.id : link.source;
-    const tid = typeof link.target === 'object' ? link.target.id : link.target;
-    lightNode(sid);
-    lightNode(tid);
-  };
-  doLight();
+  if (!link || !link.__lineObj) return;
+  link.__lineObj.material.opacity = 1.0;
+  const gData = Graph.graphData();
+  const li = gData.links.indexOf(link);
+  if (li >= 0) litLinks.add(li);
+  // Always light both endpoints
+  const sid = typeof link.source === 'object' ? link.source.id : link.source;
+  const tid = typeof link.target === 'object' ? link.target.id : link.target;
+  lightNode(sid);
+  lightNode(tid);
 }
 
 function resetSpread() {
@@ -696,7 +668,6 @@ function resetSpread() {
   pulseParticles.length = 0;
   pulseAnimRunning = false;
   spreadActive = false;
-  spreadAnimDone = false;
   clickedNode = null;
   // Don't restore opacity — keep activated nodes/links lit
 }
@@ -889,16 +860,6 @@ setTimeout(() => {
 function animate(time) {
   requestAnimationFrame(animate);
   const t = time * 0.001;
-
-  // During spread: hide any late-created __lineObj (uses visible, not opacity — no animation conflict)
-  if (spreadActive) {
-    const gData = Graph.graphData();
-    gData.links.forEach((link, i) => {
-      if (!link.__lineObj) return;
-      if (litLinks.has(i)) return;
-      if (link.__lineObj.visible) link.__lineObj.visible = false;
-    });
-  }
 
   // Breathing animation — ±4% scale pulsation
   if (!spreadActive) {
