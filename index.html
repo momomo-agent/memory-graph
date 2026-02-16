@@ -1,50 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Memory Graph</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a2e; }
-  iframe { width: 100%; height: 100%; border: none; }
-  .switch-btn {
-    position: fixed;
-    top: 16px;
-    right: 180px;
-    z-index: 9999;
-    background: rgba(255,255,255,0.08);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 8px;
-    padding: 8px 16px;
-    color: rgba(255,255,255,0.7);
-    font: 13px/1 -apple-system, BlinkMacSystemFont, sans-serif;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    user-select: none;
-  }
-  .switch-btn:hover {
-    background: rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.95);
-  }
-  .switch-btn .label { opacity: 0.5; margin-right: 6px; }
-  .switch-btn .mode { font-weight: 600; }
-</style>
-</head>
-<body>
-<iframe id="viewer" src="index-3d.html"></iframe>
-<button class="switch-btn" id="switchBtn" onclick="toggleMode()">
-  <span class="label">切换到</span><span class="mode" id="modeLabel">2D</span>
-</button>
-<script>
-let is3D = true;
-function toggleMode() {
-  is3D = !is3D;
-  document.getElementById('viewer').src = is3D ? 'index-3d.html' : 'index-2d.html';
-  document.getElementById('modeLabel').textContent = is3D ? '2D' : '3D';
-}
-</script>
-</body>
+<html>
+<head><meta http-equiv="refresh" content="0;url=index-3d.html"></head>
+<body></body>
 </html>

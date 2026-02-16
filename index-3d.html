@@ -18,6 +18,14 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 }
 #search::placeholder { color: #888; }
 #search:focus { border-color: rgba(255,255,255,0.3); }
+#mode-switch {
+  position: fixed; top: 16px; left: 250px; z-index: 10;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px; padding: 8px 14px; color: rgba(255,255,255,0.6);
+  font-size: 13px; cursor: pointer; backdrop-filter: blur(8px);
+  transition: all 0.2s ease; text-decoration: none; display: inline-block;
+}
+#mode-switch:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.95); }
 #tooltip {
   position: fixed; pointer-events: none; z-index: 20;
   background: rgba(20,20,20,0.92); border: 1px solid rgba(255,255,255,0.15);
@@ -71,6 +79,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 </head>
 <body>
 <input id="search" type="text" placeholder="搜索节点..." autocomplete="off" spellcheck="false">
+<a id="mode-switch" href="index-2d.html">切换 2D</a>
 <div id="tooltip"></div>
 <div id="legend"></div>
 <div id="stats"></div>
