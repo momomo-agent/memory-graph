@@ -30,8 +30,25 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 #legend {
   position: fixed; bottom: 16px; left: 16px; z-index: 10;
   background: rgba(20,20,20,0.7); border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 8px; padding: 12px 16px; backdrop-filter: blur(8px);
-  font-size: 11px; color: #777;
+  border-radius: 8px; padding: 0; backdrop-filter: blur(8px);
+  font-size: 11px; color: #777; overflow: hidden;
+  cursor: pointer; user-select: none;
+}
+#legend .legend-header {
+  padding: 8px 14px; display: flex; align-items: center; gap: 6px;
+}
+#legend .legend-header::before {
+  content: '▶'; font-size: 8px; transition: transform 0.2s;
+}
+#legend.open .legend-header::before {
+  transform: rotate(90deg);
+}
+#legend .legend-body {
+  max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;
+  padding: 0 14px;
+}
+#legend.open .legend-body {
+  max-height: 400px; padding: 0 14px 10px;
 }
 #legend .item { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
 #legend .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -750,9 +767,10 @@ searchInput.addEventListener('keydown', e => e.stopPropagation());
 const legendDiv = document.getElementById('legend');
 const legendItems = graphData.clusters.map(c => [c.label, clusterColors[c.id] || '#888']);
 legendItems.push(['无集群', '#dddddd']);
-legendDiv.innerHTML = legendItems.map(([l, c]) =>
+legendDiv.innerHTML = '<div class="legend-header">图例</div><div class="legend-body">' + legendItems.map(([l, c]) =>
   '<div class="item"><div class="dot" style="background:' + c + ';box-shadow:0 0 6px ' + c + '"></div>' + l + '</div>'
-).join('');
+).join('') + '</div>';
+legendDiv.addEventListener('click', () => legendDiv.classList.toggle('open'));
 
 // === STATS ===
 document.getElementById('stats').textContent = nodes.length + ' nodes · ' + links.length + ' edges';
