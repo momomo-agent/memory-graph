@@ -543,31 +543,7 @@ function triggerSpreadActivation(node) {
     spreadTimeouts.push(tid);
   });
 
-  // Fallback: after all pulses should be done, force-light any activated nodes/links still dark
-  const maxHop = Math.max(...Object.values(depthMap), 0);
-  const fallbackDelay = (maxHop + 2) * hopDelayMs + pulseTravelMs + 200;
-  const fallbackTid = setTimeout(() => {
-    // Light ALL nodes from spreadActivation — this is the true spread result
-    Object.keys(act).forEach(nid => lightNode(nid));
-    // Light all links where BOTH endpoints are in act
-    gData.links.forEach((link, i) => {
-      const sid = typeof link.source === 'object' ? link.source.id : link.source;
-      const tid2 = typeof link.target === 'object' ? link.target.id : link.target;
-      if (act[sid] && act[tid2] && link.__lineObj) {
-        if (!litLinks.has(i)) lightLink(link);
-      }
-    });
-    // Force dark any line where both endpoints are not in act
-    gData.links.forEach((link) => {
-      if (!link.__lineObj) return;
-      const sid = typeof link.source === 'object' ? link.source.id : link.source;
-      const tid2 = typeof link.target === 'object' ? link.target.id : link.target;
-      if (!act[sid] && !act[tid2]) {
-        link.__lineObj.material.opacity = 0;
-      }
-    });
-  }, fallbackDelay);
-  spreadTimeouts.push(fallbackTid);
+  // No fallback — the electric current animation IS the spread result
 }
 
 function animatePulses(now) {
