@@ -681,21 +681,9 @@ function lightNode(nid) {
   litNodes.add(nid);
   const n = nodes.find(x => x.id === nid);
   if (n && n.__sphere) {
-    // Animate from current to bright over 250ms
-    const startOp = n.__sphere.material.opacity;
-    const startEm = n.__sphere.material.emissiveIntensity;
-    const startLbl = n.__label ? n.__label.material.opacity : 0;
-    const t0 = performance.now();
-    const dur = 250;
-    const anim = () => {
-      const p = Math.min((performance.now() - t0) / dur, 1);
-      const ease = p * (2 - p); // ease-out
-      n.__sphere.material.opacity = startOp + (1.0 - startOp) * ease;
-      n.__sphere.material.emissiveIntensity = startEm + (0.6 - startEm) * ease;
-      if (n.__label) n.__label.material.opacity = startLbl + (1.0 - startLbl) * ease;
-      if (p < 1) requestAnimationFrame(anim);
-    };
-    requestAnimationFrame(anim);
+    n.__sphere.material.opacity = 1.0;
+    n.__sphere.material.emissiveIntensity = 0.6;
+    if (n.__label) n.__label.material.opacity = 1.0;
   }
 }
 
@@ -703,17 +691,7 @@ function lightLink(link) {
   if (!link) return;
   const doLight = () => {
     if (link.__lineObj) {
-      // Animate from current to bright over 250ms
-      const startOp = link.__lineObj.material.opacity;
-      const t0 = performance.now();
-      const dur = 250;
-      const anim = () => {
-        const p = Math.min((performance.now() - t0) / dur, 1);
-        const ease = p * (2 - p);
-        link.__lineObj.material.opacity = startOp + (1.0 - startOp) * ease;
-        if (p < 1) requestAnimationFrame(anim);
-      };
-      requestAnimationFrame(anim);
+      link.__lineObj.material.opacity = 1.0;
       const gData = Graph.graphData();
       const li = gData.links.indexOf(link);
       if (li >= 0) litLinks.add(li);
