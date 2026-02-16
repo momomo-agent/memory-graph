@@ -937,9 +937,9 @@ function animate(time) {
   requestAnimationFrame(animate);
   const t = time * 0.001;
 
-  // During spread animation: continuously enforce dim on non-lit links/nodes
-  // Only while animation is running, not after it completes
-  if (spreadActive && !spreadAnimDone) {
+  // During spread: continuously enforce dim on non-lit links/nodes
+  // Must run entire time spreadActive is true, not just during animation
+  if (spreadActive) {
     const gData = Graph.graphData();
     gData.links.forEach((link, i) => {
       if (!link.__lineObj) return;
