@@ -526,9 +526,9 @@ function animatePulses(now) {
     const scale = 0.8 + glow * 0.5;
     p.mesh.scale.set(scale, scale, scale);
 
-    // Light up the edge as pulse passes
+    // Light up the edge as pulse passes — keep it bright
     if (p.link && p.link.__lineObj) {
-      p.link.__lineObj.material.opacity = Math.max(p.link.__lineObj.material.opacity, 0.15 + glow * 0.5 * p.energy);
+      p.link.__lineObj.material.opacity = Math.max(p.link.__lineObj.material.opacity, 0.7 + glow * 0.3);
       // Mark this link as lit
       const gData = Graph.graphData();
       const li = gData.links.indexOf(p.link);
@@ -545,20 +545,10 @@ function animatePulses(now) {
       const tgtNode = nodes.find(x => x.id === p.targetNodeId);
       if (tgtNode && tgtNode.__sphere) {
         litNodes.add(tgtNode.id); // Mark as lit
-        const finalOpacity = 0.2 + p.energy * 0.8;
-        const finalEmissive = 0.1 + p.energy * 0.7;
-        // Flash bright then settle
+        // Stay bright — no fade down
         tgtNode.__sphere.material.opacity = 1.0;
-        tgtNode.__sphere.material.emissiveIntensity = 1.0;
+        tgtNode.__sphere.material.emissiveIntensity = 0.6 + p.energy * 0.4;
         if (tgtNode.__label) tgtNode.__label.material.opacity = 1.0;
-        // Settle down after flash
-        setTimeout(() => {
-          if (tgtNode.__sphere) {
-            tgtNode.__sphere.material.opacity = finalOpacity;
-            tgtNode.__sphere.material.emissiveIntensity = finalEmissive;
-            if (tgtNode.__label) tgtNode.__label.material.opacity = finalOpacity;
-          }
-        }, 150);
       }
     } else {
       anyActive = true;
