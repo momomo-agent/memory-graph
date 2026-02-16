@@ -158,8 +158,8 @@ nodes.forEach(n => {
   const c = getColor(n.id);
   const rg = defs.append("radialGradient").attr("id", `ng-${n.id.replace(/[^a-zA-Z0-9-]/g, '_')}`);
   rg.append("stop").attr("offset", "0%").attr("stop-color", c).attr("stop-opacity", 1);
-  rg.append("stop").attr("offset", "60%").attr("stop-color", c).attr("stop-opacity", 0.85);
-  rg.append("stop").attr("offset", "100%").attr("stop-color", c).attr("stop-opacity", 0.4);
+  rg.append("stop").attr("offset", "70%").attr("stop-color", c).attr("stop-opacity", 0.95);
+  rg.append("stop").attr("offset", "100%").attr("stop-color", c).attr("stop-opacity", 0.7);
 });
 
 // Bezier curves — gradient for cross-cluster edges
@@ -196,14 +196,14 @@ const linkEls = linkG.selectAll("path").data(links).join("path")
   .attr("stroke-opacity", d => 0.45 + Math.min((d.weight||1) / 8, 1) * 0.5)
   .attr("stroke-width", d => wScale(d.weight))
   .attr("fill", "none")
-  .style("filter", d => (d.weight || 1) >= 5 ? "url(#glow3)" : "none");
+  .style("filter", d => (d.weight || 1) >= 8 ? "url(#glow1)" : "none");
 
 const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
   .attr("r", d => rScale(degree[d.id] || 1))
   .attr("fill", d => `url(#ng-${d.id.replace(/[^a-zA-Z0-9-]/g, '_')})`)
   .attr("stroke", "none")
   .attr("fill-opacity", d => 0.78 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.22)
-  .style("filter", d => `url(#glow${Math.min(d.imp || 1, 5)})`)
+  .style("filter", "none")
   .style("cursor", "grab");
 
 const labelEls = labelG.selectAll("text").data(nodes, d => d.id).join("text")
