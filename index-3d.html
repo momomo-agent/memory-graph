@@ -258,19 +258,18 @@ const Graph = ForceGraph3D()(container)
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
     return (srcId + tgtId).split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 628 / 100;
   })
-  .linkColor(link => {
+  .linkMaterial(link => {
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
     const c1 = new THREE.Color(getColor(srcId));
     const c2 = new THREE.Color(getColor(tgtId));
     c1.lerp(c2, 0.5);
-    return '#' + c1.getHexString();
+    return new THREE.LineBasicMaterial({ color: c1, transparent: true, opacity: 0.4, depthWrite: false });
   })
   .linkWidth(link => {
     const w = link.weight || 1;
     return 0.15 + Math.min(w / 10, 1) * 1.2;
   })
-  .linkOpacity(0.4)
   // Force layout tuning
   .d3AlphaDecay(0.02)
   .d3VelocityDecay(0.3)
