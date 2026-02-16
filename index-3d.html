@@ -421,8 +421,8 @@ function triggerSpreadActivation(node) {
   spreadActive = true;
   spreadTimeouts.forEach(t => clearTimeout(t));
   spreadTimeouts = [];
-  // Clean up old pulse sparks
-  pulseParticles.forEach(p => { if (p.spark) { Graph.scene().remove(p.spark); p.spark.geometry.dispose(); p.spark.material.dispose(); } });
+  // Clean up old pulse overlays
+  pulseParticles.forEach(p => { if (p.overlayLine) { Graph.scene().remove(p.overlayLine); p.overlayLine.geometry.dispose(); p.overlayMat.dispose(); } });
   pulseParticles.length = 0;
 
   const act = spreadActivation(node.id);
@@ -507,24 +507,89 @@ function triggerSpreadActivation(node) {
       // Don't light source node here — it should already be lit from previous hop
       // Target node will be lit when current arrives
 
-      // Create glowing spark that flies along the curve
+      // Create overlay line with shader — white light sweeps along the curve
       const color = new THREE.Color(getColor(parentId)).lerp(new THREE.Color(getColor(nid)), 0.5);
-      const glowColor = color.clone().multiplyScalar(2.5);
 
-      // Spark — a small glowing sphere
-      const sparkGeo = new THREE.SphereGeometry(1.2, 8, 8);
-      const sparkMat = new THREE.MeshBasicMaterial({
-        color: glowColor, transparent: true, opacity: 1.0
+      // Copy path from __lineObj
+      let overlayGeo = null;
+      if (link && link.__lineObj) {
+        const srcPos = link.__lineObj.geometry.getAttribute('position');
+        if (srcPos && srcPos.count >= 2) {
+          const count = srcPos.count;
+          const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+          const reverse = srcId !== parentId;
+          const positions = new Float32Array(count * 3);
+          const tValues = new Float32Array(count); // normalized t along line
+          for (let i = 0; i < count; i++) {
+            const idx = reverse ? (count - 1 - i) : i;
+            positions[i*3]   = srcPos.getX(idx);
+            positions[i*3+1] = srcPos.getY(idx);
+            positions[i*3+2] = srcPos.getZ(idx);
+            tValues[i] = i / (count - 1);
+          }
+          overlayGeo = new THREE.BufferGeometry();
+          overlayGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+          overlayGeo.setAttribute('aT', new THREE.Float32BufferAttribute(tValues, 1));
+        }
+      }
+
+      // Fallback: straight line with t attribute
+      if (!overlayGeo) {
+        const count = 30;
+        const positions = new Float32Array((count + 1) * 3);
+        const tValues = new Float32Array(count + 1);
+        for (let i = 0; i <= count; i++) {
+          const t = i / count;
+          positions[i*3]   = srcNode.x + (tgtNode.x - srcNode.x) * t;
+          positions[i*3+1] = srcNode.y + (tgtNode.y - srcNode.y) * t;
+          positions[i*3+2] = srcNode.z + (tgtNode.z - srcNode.z) * t;
+          tValues[i] = t;
+        }
+        overlayGeo = new THREE.BufferGeometry();
+        overlayGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        overlayGeo.setAttribute('aT', new THREE.Float32BufferAttribute(tValues, 1));
+      }
+
+      const overlayMat = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        uniforms: {
+          uProgress: { value: 0.0 },
+          uColor: { value: color },
+          uWhite: { value: new THREE.Color(1, 1, 1) }
+        },
+        vertexShader: `
+          attribute float aT;
+          varying float vT;
+          void main() {
+            vT = aT;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float uProgress;
+          uniform vec3 uColor;
+          uniform vec3 uWhite;
+          varying float vT;
+          void main() {
+            // White glow band centered at uProgress, width ~0.15
+            float dist = abs(vT - uProgress);
+            float glow = smoothstep(0.15, 0.0, dist);
+            // Trail: already-passed area glows with link color
+            float trail = smoothstep(0.02, 0.0, vT - uProgress) * 0.6;
+            vec3 col = mix(uColor, uWhite, glow);
+            float alpha = max(glow, trail);
+            gl_FragColor = vec4(col, alpha);
+          }
+        `
       });
-      const spark = new THREE.Mesh(sparkGeo, sparkMat);
-      scene.add(spark);
 
-      // Also add a point light on the spark for glow effect
-      const sparkLight = new THREE.PointLight(glowColor, 3, 30);
-      spark.add(sparkLight);
+      const overlayLine = new THREE.Line(overlayGeo, overlayMat);
+      scene.add(overlayLine);
 
       pulseParticles.push({
-        spark,
+        overlayLine,
+        overlayMat,
         startTime: performance.now(),
         duration: pulseTravelMs,
         energy,
@@ -553,48 +618,12 @@ function animatePulses(now) {
     const elapsed = now - p.startTime;
     const t = Math.min(elapsed / p.duration, 1);
 
-    // Move spark along the curve
-    const src = p.sourceNode;
-    const tgt = p.targetNode;
-    if (src && tgt && src.x !== undefined && tgt.x !== undefined) {
-      // Try to follow __lineObj curve
-      let placed = false;
-      if (p.link && p.link.__lineObj) {
-        const pos = p.link.__lineObj.geometry.getAttribute('position');
-        if (pos && pos.count >= 2) {
-          const srcId = typeof p.link.source === 'object' ? p.link.source.id : p.link.source;
-          const reverse = srcId !== src.id;
-          const fIdx = t * (pos.count - 1);
-          const i0 = Math.floor(fIdx);
-          const i1 = Math.min(i0 + 1, pos.count - 1);
-          const f = fIdx - i0;
-          const ri0 = reverse ? (pos.count - 1 - i0) : i0;
-          const ri1 = reverse ? (pos.count - 1 - i1) : i1;
-          p.spark.position.set(
-            pos.getX(ri0) + (pos.getX(ri1) - pos.getX(ri0)) * f,
-            pos.getY(ri0) + (pos.getY(ri1) - pos.getY(ri0)) * f,
-            pos.getZ(ri0) + (pos.getZ(ri1) - pos.getZ(ri0)) * f
-          );
-          placed = true;
-        }
-      }
-      if (!placed) {
-        // Fallback: straight lerp
-        p.spark.position.set(
-          src.x + (tgt.x - src.x) * t,
-          src.y + (tgt.y - src.y) * t,
-          src.z + (tgt.z - src.z) * t
-        );
-      }
+    // Update shader progress — white light sweeps along the line
+    if (p.overlayMat) {
+      p.overlayMat.uniforms.uProgress.value = t;
     }
 
-    // Spark pulses and shrinks near end
-    const pulse = 0.8 + 0.2 * Math.sin(t * Math.PI * 6);
-    p.spark.material.opacity = t < 0.9 ? pulse : pulse * (1 - (t - 0.9) / 0.1);
-    const scale = t < 0.8 ? 1.0 : 1.0 - (t - 0.8) / 0.2 * 0.5;
-    p.spark.scale.setScalar(scale);
-
-    // Light the underlying edge progressively as spark passes
+    // Light the underlying edge progressively
     if (p.link && p.link.__lineObj && t > 0.1) {
       const progress = Math.min((t - 0.1) / 0.8, 1);
       p.link.__lineObj.material.opacity = 0.4 + progress * 0.6;
@@ -602,10 +631,12 @@ function animatePulses(now) {
 
     if (t >= 1) {
       p.done = true;
-      // Remove spark
-      Graph.scene().remove(p.spark);
-      p.spark.geometry.dispose();
-      p.spark.material.dispose();
+      // Remove overlay line
+      if (p.overlayLine) {
+        Graph.scene().remove(p.overlayLine);
+        p.overlayLine.geometry.dispose();
+        p.overlayMat.dispose();
+      }
 
       // Light endpoints
       if (p.targetNode) lightNode(p.targetNode.id);
@@ -713,12 +744,12 @@ function lightLink(link) {
 function resetSpread() {
   spreadTimeouts.forEach(t => clearTimeout(t));
   spreadTimeouts = [];
-  // Clean up pulse sparks
+  // Clean up pulse overlays
   pulseParticles.forEach(p => {
-    if (p.spark && !p.done) {
-      Graph.scene().remove(p.spark);
-      p.spark.geometry.dispose();
-      p.spark.material.dispose();
+    if (p.overlayLine && !p.done) {
+      Graph.scene().remove(p.overlayLine);
+      p.overlayLine.geometry.dispose();
+      p.overlayMat.dispose();
     }
   });
   pulseParticles.length = 0;
