@@ -465,23 +465,12 @@ function triggerSpreadActivation(node) {
     if (link.__lineObj) link.__lineObj.material.opacity = 0;
   });
 
-  // Light up seed node with animation
+  // Light up seed node instantly
   litNodes.add(node.id);
   if (node.__sphere) {
-    const seedT0 = performance.now();
-    const seedDur = 300;
-    const sOp = node.__sphere.material.opacity;
-    const sEm = node.__sphere.material.emissiveIntensity;
-    const sLbl = node.__label ? node.__label.material.opacity : 0;
-    const animSeed = () => {
-      const p = Math.min((performance.now() - seedT0) / seedDur, 1);
-      const ease = p * (2 - p);
-      node.__sphere.material.opacity = sOp + (1.0 - sOp) * ease;
-      node.__sphere.material.emissiveIntensity = sEm + (1.0 - sEm) * ease;
-      if (node.__label) node.__label.material.opacity = sLbl + (1.0 - sLbl) * ease;
-      if (p < 1) requestAnimationFrame(animSeed);
-    };
-    requestAnimationFrame(animSeed);
+    node.__sphere.material.opacity = 1.0;
+    node.__sphere.material.emissiveIntensity = 1.0;
+    if (node.__label) node.__label.material.opacity = 1.0;
   }
 
   const scene = Graph.scene();
@@ -646,32 +635,14 @@ function restoreAll() {
   resetSpread();
   litNodes.clear();
   litLinks.clear();
-  const dur = 400;
-  const t0 = performance.now();
-  const nodeSnaps = [];
   nodes.forEach(n => {
     if (!n.__sphere) return;
-    nodeSnaps.push({ sphere: n.__sphere, label: n.__label, startOp: n.__sphere.material.opacity, startEm: n.__sphere.material.emissiveIntensity, startLbl: n.__label ? n.__label.material.opacity : 0 });
+    n.__sphere.material.opacity = 0.85;
+    n.__sphere.material.emissiveIntensity = 0.3;
+    if (n.__label) n.__label.material.opacity = 0.85;
   });
-  const linkSnaps = [];
   const gData = Graph.graphData();
-  gData.links.forEach(link => {
-    if (link.__lineObj) linkSnaps.push({ obj: link.__lineObj, startOp: link.__lineObj.material.opacity });
-  });
-  const animRestore = () => {
-    const p = Math.min((performance.now() - t0) / dur, 1);
-    const ease = p * (2 - p);
-    nodeSnaps.forEach(d => {
-      d.sphere.material.opacity = d.startOp + (0.85 - d.startOp) * ease;
-      d.sphere.material.emissiveIntensity = d.startEm + (0.3 - d.startEm) * ease;
-      if (d.label) d.label.material.opacity = d.startLbl + (0.85 - d.startLbl) * ease;
-    });
-    linkSnaps.forEach(d => {
-      d.obj.material.opacity = d.startOp + (0.4 - d.startOp) * ease;
-    });
-    if (p < 1) requestAnimationFrame(animRestore);
-  };
-  requestAnimationFrame(animRestore);
+  gData.links.forEach(link => { if (link.__lineObj) link.__lineObj.material.opacity = 0.4; });
   clickedNode = null;
   document.getElementById('tooltip').style.display = 'none';
 }
