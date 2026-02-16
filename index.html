@@ -71,24 +71,24 @@ const graphData = {"version": 1, "updatedAt": "2026-02-15", "nodes": {"braindown
 
 // === COLOR MAP ===
 const clusterColors = {
-  "design-system": "#FF6B6B",
-  "intera-engine": "#FFEAA7",
-  "cluster-jotjot": "#45B7D1",
-  "cluster-memory-system": "#7B68EE",
-  "bookmark-tools": "#98D8C8",
-  "cluster-mind-palace": "#E8A87C",
-  "ai-native-ui": "#DDA0DD",
-  "cluster-agent-memory": "#F0A500",
-  "cluster-instinct-mode": "#FF8C69",
-  "daily-brief-stack": "#85CDCA",
-  "molttalk-stack": "#C3AED6",
-  "cluster-webgpu": "#96CEB4",
-  "interaction-design": "#FFB6C1",
-  "cluster-vue-sfc-splitting": "#B8D4E3",
-  "cluster-anthropic-harness": "#4ECDC4",
-  "toolchain": "#A8E6CF",
-  "cluster-figma-plugin": "#DCEDC1",
-  "cluster-hci": "#FFD3B6"
+  "design-system": "#FF4757",
+  "intera-engine": "#FFC312",
+  "cluster-jotjot": "#0ABDE3",
+  "cluster-memory-system": "#6C5CE7",
+  "bookmark-tools": "#00D2D3",
+  "cluster-mind-palace": "#F97F51",
+  "ai-native-ui": "#A55EEA",
+  "cluster-agent-memory": "#FF9F1A",
+  "cluster-instinct-mode": "#FF6348",
+  "daily-brief-stack": "#1ABC9C",
+  "molttalk-stack": "#9B59B6",
+  "cluster-webgpu": "#2ED573",
+  "interaction-design": "#E84393",
+  "cluster-vue-sfc-splitting": "#54A0FF",
+  "cluster-anthropic-harness": "#00CEC9",
+  "toolchain": "#26DE81",
+  "cluster-figma-plugin": "#A3CB38",
+  "cluster-hci": "#F39C12"
 };
 const clusterLabels = {};
 const nodeCluster = {};
@@ -101,7 +101,7 @@ graphData.clusters.forEach(c => {
 });
 
 function getColor(id) {
-  return clusterColors[nodeCluster[id]] || "#dddddd";
+  return clusterColors[nodeCluster[id]] || "#8395A7";
 }
 
 // === BUILD NODES & LINKS ===
@@ -181,19 +181,19 @@ function updateGradients() {
     .attr("stop-color", d => {
       const c = getColor(d.source.id);
       const w = d.weight || 1;
-      return w >= 6 ? c : d3.interpolateRgb("#0a0a0a", c)(Math.min(w / 6, 0.8));
+      return w >= 6 ? c : d3.interpolateRgb(d3.color(c).darker(2.5), c)(Math.min(w / 6, 1));
     });
   linkGradients.select("stop:last-child")
     .attr("stop-color", d => {
       const c = getColor(d.target.id);
       const w = d.weight || 1;
-      return w >= 6 ? c : d3.interpolateRgb("#0a0a0a", c)(Math.min(w / 6, 0.8));
+      return w >= 6 ? c : d3.interpolateRgb(d3.color(c).darker(2.5), c)(Math.min(w / 6, 1));
     });
 }
 
 const linkEls = linkG.selectAll("path").data(links).join("path")
   .attr("stroke", (d, i) => `url(#lg${i})`)
-  .attr("stroke-opacity", d => 0.35 + Math.min((d.weight||1) / 8, 1) * 0.55)
+  .attr("stroke-opacity", d => 0.45 + Math.min((d.weight||1) / 8, 1) * 0.5)
   .attr("stroke-width", d => wScale(d.weight))
   .attr("fill", "none")
   .style("filter", d => (d.weight || 1) >= 5 ? "url(#glow3)" : "none");
@@ -202,14 +202,14 @@ const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
   .attr("r", d => rScale(degree[d.id] || 1))
   .attr("fill", d => `url(#ng-${d.id.replace(/[^a-zA-Z0-9-]/g, '_')})`)
   .attr("stroke", "none")
-  .attr("fill-opacity", d => 0.6 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.4)
+  .attr("fill-opacity", d => 0.78 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.22)
   .style("filter", d => `url(#glow${Math.min(d.imp || 1, 5)})`)
   .style("cursor", "grab");
 
 const labelEls = labelG.selectAll("text").data(nodes, d => d.id).join("text")
   .text(d => d.id)
   .attr("font-size", d => Math.max(8, Math.min(12, rScale(degree[d.id]||1) * 0.7)))
-  .attr("fill", d => getColor(d.id)).attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5)
+  .attr("fill", d => getColor(d.id)).attr("fill-opacity", d => 0.6 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.4)
   .attr("text-anchor", "middle").attr("dy", d => rScale(degree[d.id]||1) + 12)
   .style("pointer-events", "none").style("user-select", "none");
 
@@ -369,10 +369,10 @@ nodeEls.on("mouseenter", (e, d) => {
 })
 .on("mouseleave", () => {
   if (!spreadActive) {
-    nodeEls.attr("fill-opacity", d => 0.6 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.4);
-    linkEls.attr("stroke-opacity", d => 0.35 + Math.min((d.weight||1) / 8, 1) * 0.55)
+    nodeEls.attr("fill-opacity", d => 0.78 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.22);
+    linkEls.attr("stroke-opacity", d => 0.45 + Math.min((d.weight||1) / 8, 1) * 0.5)
            .attr("stroke", (d, i) => `url(#lg${i})`);
-    labelEls.attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5)
+    labelEls.attr("fill-opacity", d => 0.6 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.4)
             .attr("fill", d => getColor(d.id));
   }
   tooltip.style("display", "none");
@@ -483,12 +483,12 @@ svg.on("click", () => {
   if (!spreadActive) return;
   spreadActive = false;
   nodeEls.transition().duration(400)
-    .attr("fill-opacity", d => 0.6 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.4);
+    .attr("fill-opacity", d => 0.78 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.22);
   linkEls.transition().duration(400)
-    .attr("stroke-opacity", d => 0.35 + Math.min((d.weight||1) / 8, 1) * 0.55)
+    .attr("stroke-opacity", d => 0.45 + Math.min((d.weight||1) / 8, 1) * 0.5)
     .attr("stroke", (d, i) => `url(#lg${i})`);
   labelEls.transition().duration(400)
-    .attr("fill-opacity", d => 0.5 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.5).attr("fill", d => getColor(d.id));
+    .attr("fill-opacity", d => 0.6 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.4).attr("fill", d => getColor(d.id));
   particleEls.transition().duration(400)
     .attr("fill-opacity", 0.6);
 });
