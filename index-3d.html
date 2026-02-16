@@ -588,27 +588,57 @@ function animatePulses(now) {
     // the overlay currentLine IS the visual. Only light the edge when current arrives.
 
     if (t >= 1) {
-      // Current reached target — clean up overlay, light up the underlying edge
+      // Current reached target — crossfade: overlay fades out while underlying edge fades in
       p.done = true;
-      // Fade out the glow line over 300ms
+      
+      // Light endpoints immediately (they animate via lightNode)
+      if (p.targetNode) lightNode(p.targetNode.id);
+      if (p.sourceNode) lightNode(p.sourceNode.id);
+      
+      // Find the link (retry if needed)
+      const theLink = p.link || (() => {
+        const gData = Graph.graphData();
+        return gData.links.find(l => {
+          const sid = typeof l.source === 'object' ? l.source.id : l.source;
+          const tid2 = typeof l.target === 'object' ? l.target.id : l.target;
+          return (sid === p.sourceNode?.id && tid2 === p.targetNode?.id) || 
+                 (sid === p.targetNode?.id && tid2 === p.sourceNode?.id);
+        });
+      })();
+      
+      // Mark as lit
+      if (theLink) {
+        const gData = Graph.graphData();
+        const li = gData.links.indexOf(theLink);
+        if (li >= 0) litLinks.add(li);
+      }
+      
+      // Crossfade over 300ms: overlay out, underlying in
       const fadeStart = performance.now();
-      const fadeLine = () => {
-        const ft = Math.min((performance.now() - fadeStart) / 300, 1);
+      const fadeDur = 300;
+      const underlyingObj = theLink && theLink.__lineObj;
+      const underStart = underlyingObj ? underlyingObj.material.opacity : 0;
+      
+      const crossfade = () => {
+        const ft = Math.min((performance.now() - fadeStart) / fadeDur, 1);
+        const ease = ft * (2 - ft);
+        // Overlay fades out
         p.currentLine.material.opacity = 1.0 - ft;
+        // Underlying fades in
+        if (underlyingObj) {
+          underlyingObj.material.opacity = underStart + (1.0 - underStart) * ease;
+        }
         if (ft < 1) {
-          requestAnimationFrame(fadeLine);
+          requestAnimationFrame(crossfade);
         } else {
           Graph.scene().remove(p.currentLine);
           p.currentLine.geometry.dispose();
           p.currentLine.material.dispose();
+          // Ensure final state
+          if (underlyingObj) underlyingObj.material.opacity = 1.0;
         }
       };
-      requestAnimationFrame(fadeLine);
-
-      // NOW light the underlying edge and both endpoints
-      if (p.link) lightLink(p.link);
-      if (p.targetNode) lightNode(p.targetNode.id);
-      if (p.sourceNode) lightNode(p.sourceNode.id);
+      requestAnimationFrame(crossfade);
     } else {
       anyActive = true;
     }
