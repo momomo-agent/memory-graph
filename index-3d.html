@@ -410,25 +410,26 @@ function triggerSpreadActivation(node) {
 
   const act = spreadActivation(node.id);
   const maxAct = Math.max(...Object.values(act));
-  // Only keep nodes with meaningful energy (>15% of max)
-  const energyThreshold = maxAct * 0.15;
 
-  // BFS depth from seed
+  // BFS depth from seed — use spreadAdj (weighted) for correct path selection
+  // Only include nodes that spreadActivation actually activated
   const depthMap = {}; depthMap[node.id] = 0;
   const bfsQueue = [node.id];
   const visited = new Set([node.id]);
-  const parentMap = {}; // track BFS tree for directed pulses
+  const parentMap = {}; // track BFS tree for directed current
   while (bfsQueue.length) {
     const cur = bfsQueue.shift();
-    const nb = adj[cur] || new Set();
-    nb.forEach(nid => {
-      if (!visited.has(nid) && act[nid] >= energyThreshold) {
-        visited.add(nid);
-        depthMap[nid] = depthMap[cur] + 1;
-        parentMap[nid] = cur;
-        bfsQueue.push(nid);
-      }
-    });
+    // Sort neighbors by activation energy (strongest first) for better path selection
+    const nb = (spreadAdj[cur] || [])
+      .filter(n => act[n.target] && !visited.has(n.target))
+      .sort((a, b) => (act[b.target] || 0) - (act[a.target] || 0));
+    for (const n of nb) {
+      if (visited.has(n.target)) continue;
+      visited.add(n.target);
+      depthMap[n.target] = depthMap[cur] + 1;
+      parentMap[n.target] = cur;
+      bfsQueue.push(n.target);
+    }
   }
 
   // Dim only nodes/links not previously lit by spread
@@ -546,29 +547,22 @@ function triggerSpreadActivation(node) {
   const maxHop = Math.max(...Object.values(depthMap), 0);
   const fallbackDelay = (maxHop + 2) * hopDelayMs + pulseTravelMs + 200;
   const fallbackTid = setTimeout(() => {
-    // Only light nodes that were in the BFS tree (had current animation)
-    Object.keys(depthMap).forEach(nid => lightNode(nid));
-    // Light links between BFS-tree nodes only
+    // Light ALL nodes from spreadActivation — this is the true spread result
+    Object.keys(act).forEach(nid => lightNode(nid));
+    // Light all links where BOTH endpoints are in act
     gData.links.forEach((link, i) => {
       const sid = typeof link.source === 'object' ? link.source.id : link.source;
       const tid2 = typeof link.target === 'object' ? link.target.id : link.target;
-      if (depthMap[sid] !== undefined && depthMap[tid2] !== undefined) {
-        if (!litLinks.has(i) && link.__lineObj) {
-          lightLink(link);
-        }
+      if (act[sid] && act[tid2] && link.__lineObj) {
+        if (!litLinks.has(i)) lightLink(link);
       }
     });
-    // Final consistency: any visible line must have both endpoints lit,
-    // any line with both endpoints dark must be dark
-    gData.links.forEach((link, i) => {
+    // Force dark any line where both endpoints are not in act
+    gData.links.forEach((link) => {
       if (!link.__lineObj) return;
       const sid = typeof link.source === 'object' ? link.source.id : link.source;
       const tid2 = typeof link.target === 'object' ? link.target.id : link.target;
-      if (link.__lineObj.material.opacity > 0.1) {
-        lightNode(sid);
-        lightNode(tid2);
-      }
-      if (!litNodes.has(sid) && !litNodes.has(tid2)) {
+      if (!act[sid] && !act[tid2]) {
         link.__lineObj.material.opacity = 0;
       }
     });
