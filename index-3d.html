@@ -329,6 +329,15 @@ const Graph = ForceGraph3D()(container)
   })
   .onBackgroundClick(() => {
     resetSpread();
+    // Restore all nodes/links to default opacity
+    nodes.forEach(n => {
+      if (!n.__sphere) return;
+      n.__sphere.material.opacity = 0.85;
+      n.__sphere.material.emissiveIntensity = 0.3;
+      if (n.__label) n.__label.material.opacity = 0.85;
+    });
+    const gData = Graph.graphData();
+    gData.links.forEach(link => { if (link.__line) link.__line.material.opacity = link.__defaultOpacity || 0.1; });
     clickedNode = null;
     document.getElementById('tooltip').style.display = 'none';
   });
@@ -617,17 +626,7 @@ function resetSpread() {
   pulseAnimRunning = false;
   spreadActive = false;
   clickedNode = null;
-
-  // Restore all nodes
-  nodes.forEach(n => {
-    if (!n.__sphere) return;
-    n.__sphere.material.opacity = 0.85;
-    n.__sphere.material.emissiveIntensity = 0.3;
-    if (n.__label) n.__label.material.opacity = 0.85;
-  });
-  // Restore all links
-  const gData = Graph.graphData();
-  gData.links.forEach(link => { if (link.__line) link.__line.material.opacity = link.__defaultOpacity || 0.1; });
+  // Don't restore opacity — keep activated nodes/links lit
 }
 
 // === TOOLTIP ===
