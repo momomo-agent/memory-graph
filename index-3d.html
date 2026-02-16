@@ -296,13 +296,11 @@ const Graph = ForceGraph3D()(container)
 window._Graph = Graph; // expose for debugging
 
 // Disable OrbitControls default zoom/pan — we handle it ourselves
-// Reverse rotation direction to match game-style (drag right = look right)
 setTimeout(() => {
   const controls = Graph.controls();
   if (controls) {
     controls.enableZoom = false;
     controls.enablePan = false;
-    controls.rotateSpeed = -1.0;
   }
 }, 100);
 
@@ -797,7 +795,7 @@ setTimeout(() => {
 
 // === INITIAL CAMERA ===
 // Start inside the graph, not far away
-Graph.cameraPosition({ x: 0, y: 30, z: 80 });
+Graph.cameraPosition({ x: 0, y: 60, z: 200 });
 // No zoomToFit — we stay inside the graph like a game
 
 // === LIGHTING ===
@@ -878,11 +876,15 @@ requestAnimationFrame(animate);
 
 // === KEYBOARD CONTROLS (WASD game-style) ===
 const keysDown = new Set();
+let isDragging = false;
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   keysDown.add(e.code);
 });
 window.addEventListener('keyup', e => keysDown.delete(e.code));
+// Track mouse drag state to avoid WASD+drag conflict
+window.addEventListener('mousedown', () => { isDragging = true; });
+window.addEventListener('mouseup', () => { isDragging = false; });
 
 // Scroll/trackpad = fly through the graph
 // Two-finger drag (deltaX/deltaY without ctrlKey) = strafe + forward/back
@@ -897,7 +899,7 @@ window.addEventListener('wheel', e => {
   const forwardH = forward.clone(); forwardH.y = 0;
   if (forwardH.lengthSq() < 0.001) forwardH.set(0, 0, -1);
   forwardH.normalize();
-  const right = new THREE.Vector3().crossVectors(forwardH, new THREE.Vector3(0, 1, 0)).normalize();
+  const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forwardH).normalize();
 
   if (e.ctrlKey) {
     // Pinch zoom = fly forward/back
@@ -919,7 +921,7 @@ window.addEventListener('wheel', e => {
 
 function tickKeyboard() {
   requestAnimationFrame(tickKeyboard);
-  if (keysDown.size === 0) return;
+  if (keysDown.size === 0 || isDragging) return; // pause WASD during drag
   const cam = Graph.camera();
   const controls = Graph.controls();
   const speed = 3;
@@ -931,7 +933,8 @@ function tickKeyboard() {
   const forwardH = forward3D.clone(); forwardH.y = 0;
   if (forwardH.lengthSq() < 0.001) forwardH.set(0, 0, -1);
   forwardH.normalize();
-  const right = new THREE.Vector3().crossVectors(forwardH, new THREE.Vector3(0, 1, 0)).normalize();
+  // Right = cross(up, forward) for correct left/right
+  const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forwardH).normalize();
 
   let move = new THREE.Vector3();
   if (keysDown.has('KeyW')) move.addScaledVector(forward3D, speed);
