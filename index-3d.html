@@ -146,10 +146,11 @@ graphData.clusters.forEach(c => { clusterNodeMap[c.id] = c.nodes; });
 // === SPREAD ACTIVATION DATA ===
 const spreadAdj = {};
 graphData.edges.forEach(e => {
+  const ew = e.w * (e.imp || 1);
   if (!spreadAdj[e.from]) spreadAdj[e.from] = [];
   if (!spreadAdj[e.to]) spreadAdj[e.to] = [];
-  spreadAdj[e.from].push({ target: e.to, w: e.w });
-  spreadAdj[e.to].push({ target: e.from, w: e.w });
+  spreadAdj[e.from].push({ target: e.to, w: ew });
+  spreadAdj[e.to].push({ target: e.from, w: ew });
 });
 const vizDegree = degree;
 const degValues = Object.values(vizDegree).sort((a,b) => a - b);
