@@ -937,17 +937,26 @@ function animate(time) {
   requestAnimationFrame(animate);
   const t = time * 0.001;
 
-  // During spread: continuously enforce dim on non-lit links/nodes
-  // Only target late-created __lineObj that weren't caught by initial dim
-  // Skip links already in litLinks (they're being animated by lightLink)
+  // During spread: every frame, enforce correct opacity for ALL links and nodes
+  // This is the single source of truth — no more fighting with library internals
   if (spreadActive) {
     const gData = Graph.graphData();
     gData.links.forEach((link, i) => {
       if (!link.__lineObj) return;
-      if (litLinks.has(i)) return; // already lit or being lit — don't touch
-      // Only dim if it has default opacity (newly created by library)
-      if (link.__lineObj.material.opacity >= 0.3) {
+      if (litLinks.has(i)) {
+        // Lit links stay bright (lightLink animation handles the transition)
+      } else {
         link.__lineObj.material.opacity = 0;
+      }
+    });
+    nodes.forEach(n => {
+      if (!n.__sphere) return;
+      if (litNodes.has(n.id)) {
+        // Lit nodes stay bright (lightNode animation handles the transition)
+      } else {
+        n.__sphere.material.opacity = 0.03;
+        n.__sphere.material.emissiveIntensity = 0.01;
+        if (n.__label) n.__label.material.opacity = 0.02;
       }
     });
   }
