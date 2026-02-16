@@ -625,10 +625,20 @@ setTimeout(() => {
   setInterval(updateClusterHulls, 2000);
 }, 8000);
 
-// === INITIAL CAMERA: set reasonable distance immediately, then zoomToFit after layout ===
-Graph.cameraPosition({ x: 0, y: 0, z: 500 });
-setTimeout(() => { Graph.zoomToFit(400, 50); }, 2000);
-setTimeout(() => { Graph.zoomToFit(600, 50); }, 5000);
+// === INITIAL CAMERA ===
+// Immediate: set a reasonable distance so it's not pitch black
+Graph.cameraPosition({ x: 0, y: 0, z: 350 });
+// Early zoomToFit attempts while layout is still running
+setTimeout(() => { Graph.zoomToFit(400, 60); }, 1500);
+setTimeout(() => { Graph.zoomToFit(500, 60); }, 3000);
+// When engine stops (layout done), do a final precise fit
+let engineStopped = false;
+Graph.onEngineStop(() => {
+  if (!engineStopped) {
+    engineStopped = true;
+    Graph.zoomToFit(600, 60);
+  }
+});
 
 // === LIGHTING ===
 setTimeout(() => {
