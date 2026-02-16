@@ -250,25 +250,37 @@ const Graph = ForceGraph3D()(container)
   })
   .linkPositionUpdate((line, { start, end }, link) => {
     if (!line || !line.geometry) return;
-    const pos = line.geometry.attributes.position;
-    if (!pos) return;
-    const segments = link.__segments || 20;
-    // Compute a curved midpoint — offset perpendicular to the line
+    const segments = 20;
+    let pos = line.geometry.attributes.position;
+    // If buffer is wrong size (library may reset it), recreate
+    if (!pos || pos.count !== segments + 1) {
+      const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+      const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+      const srcColor = new THREE.Color(getColor(srcId));
+      const tgtColor = new THREE.Color(getColor(tgtId));
+      const positions = new Float32Array((segments + 1) * 3);
+      const colors = new Float32Array((segments + 1) * 3);
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        colors[i*3]   = srcColor.r + (tgtColor.r - srcColor.r) * t;
+        colors[i*3+1] = srcColor.g + (tgtColor.g - srcColor.g) * t;
+        colors[i*3+2] = srcColor.b + (tgtColor.b - srcColor.b) * t;
+      }
+      line.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      line.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      pos = line.geometry.attributes.position;
+    }
+    // Compute curved midpoint — offset perpendicular to the line
     const mx = (start.x + end.x) / 2;
     const my = (start.y + end.y) / 2;
     const mz = (start.z + end.z) / 2;
     const dx = end.x - start.x, dy = end.y - start.y, dz = end.z - start.z;
     const len = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
-    // Perpendicular offset for curve (use cross product with up vector)
-    const curvature = Math.min(len * 0.15, 20);
-    // Cross with (0,1,0) for horizontal offset, fallback to (1,0,0)
+    const curvature = Math.min(len * 0.2, 25);
     let px = -dz, py = 0, pz = dx;
     const plen = Math.sqrt(px*px + py*py + pz*pz) || 1;
-    px = px/plen * curvature;
-    py = py/plen * curvature;
-    pz = pz/plen * curvature;
-    // Quadratic bezier: start -> mid+offset -> end
-    const cpx = mx + px, cpy = my + py, cpz = mz + pz;
+    px = px/plen * curvature; pz = pz/plen * curvature;
+    const cpx = mx + px, cpy = my, cpz = mz + pz;
     for (let i = 0; i <= segments; i++) {
       const t = i / segments;
       const t1 = 1 - t;
@@ -857,24 +869,27 @@ const keysDown = new Set();
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   keysDown.add(e.code);
+  // Prevent Space from scrolling page
+  if (e.code === 'Space') e.preventDefault();
 });
 window.addEventListener('keyup', e => keysDown.delete(e.code));
+
+// Track a virtual lookAt target that moves with WASD
+let lookTarget = { x: 0, y: 0, z: 0 };
 
 function tickKeyboard() {
   requestAnimationFrame(tickKeyboard);
   if (keysDown.size === 0) return;
   const cam = Graph.camera();
   const controls = Graph.controls();
-  const speed = 3.5;
-  const rotSpeed = 0.015;
+  const speed = 4;
 
-  // Compute camera-relative directions (projected onto XZ plane for intuitive movement)
+  // Get current camera-relative horizontal directions
   const forward = new THREE.Vector3();
   cam.getWorldDirection(forward);
-  // Project forward onto XZ plane for horizontal movement
   forward.y = 0;
+  if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
   forward.normalize();
-  if (forward.length() < 0.01) forward.set(0, 0, -1); // fallback
   const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
   let dx = 0, dy = 0, dz = 0;
@@ -885,20 +900,32 @@ function tickKeyboard() {
   if (keysDown.has('Space'))  { dy += speed; }
   if (keysDown.has('ShiftLeft') || keysDown.has('ShiftRight')) { dy -= speed; }
 
-  // Arrow keys = orbit rotation
-  if (keysDown.has('ArrowLeft'))  { controls.rotateLeft(rotSpeed); }
-  if (keysDown.has('ArrowRight')) { controls.rotateLeft(-rotSpeed); }
-  if (keysDown.has('ArrowUp'))    { controls.rotateUp(rotSpeed); }
-  if (keysDown.has('ArrowDown'))  { controls.rotateUp(-rotSpeed); }
-  // Q/E = zoom (dolly in/out)
-  if (keysDown.has('KeyQ')) { controls.dollyIn(1.02); }
-  if (keysDown.has('KeyE')) { controls.dollyOut(1.02); }
+  // Q/E = zoom
+  if (keysDown.has('KeyQ')) {
+    const dir = new THREE.Vector3().subVectors(cam.position, controls.target).normalize();
+    cam.position.addScaledVector(dir, -speed * 2);
+    controls.update();
+  }
+  if (keysDown.has('KeyE')) {
+    const dir = new THREE.Vector3().subVectors(cam.position, controls.target).normalize();
+    cam.position.addScaledVector(dir, speed * 2);
+    controls.update();
+  }
+
+  // Arrow keys = orbit (let OrbitControls handle naturally)
+  if (keysDown.has('ArrowLeft'))  controls.rotateLeft(0.015);
+  if (keysDown.has('ArrowRight')) controls.rotateLeft(-0.015);
+  if (keysDown.has('ArrowUp'))    controls.rotateUp(0.015);
+  if (keysDown.has('ArrowDown'))  controls.rotateUp(-0.015);
 
   if (dx || dy || dz) {
-    // Move both camera AND target together (true pan)
-    const offset = new THREE.Vector3(dx, dy, dz);
-    cam.position.add(offset);
-    controls.target.add(offset);
+    // Pan: move both camera position and orbit target together
+    controls.target.x += dx;
+    controls.target.y += dy;
+    controls.target.z += dz;
+    cam.position.x += dx;
+    cam.position.y += dy;
+    cam.position.z += dz;
   }
   controls.update();
 }
