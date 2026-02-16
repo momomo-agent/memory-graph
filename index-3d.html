@@ -894,25 +894,23 @@ window.addEventListener('wheel', e => {
   e.preventDefault();
   const cam = Graph.camera();
   const controls = Graph.controls();
-  const forward = new THREE.Vector3();
-  cam.getWorldDirection(forward);
-  const forwardH = forward.clone(); forwardH.y = 0;
-  if (forwardH.lengthSq() < 0.001) forwardH.set(0, 0, -1);
-  forwardH.normalize();
-  const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forwardH).normalize();
+  cam.updateMatrixWorld();
+  const m = cam.matrixWorld.elements;
+  const camRight = new THREE.Vector3(m[0], m[1], m[2]).normalize();
+  const camForward = new THREE.Vector3(-m[8], -m[9], -m[10]).normalize();
 
   if (e.ctrlKey) {
     // Pinch zoom = fly forward/back
     const speed = e.deltaY < 0 ? 6 : -6;
-    cam.position.addScaledVector(forward, speed);
-    controls.target.addScaledVector(forward, speed);
+    cam.position.addScaledVector(camForward, speed);
+    controls.target.addScaledVector(camForward, speed);
   } else {
     // Two-finger drag = strafe (X) + forward/back (Y)
     const speedX = -e.deltaX * 0.15;
     const speedY = -e.deltaY * 0.15;
     const move = new THREE.Vector3();
-    move.addScaledVector(right, speedX);
-    move.addScaledVector(forwardH, speedY);
+    move.addScaledVector(camRight, speedX);
+    move.addScaledVector(camForward, speedY);
     cam.position.add(move);
     controls.target.add(move);
   }
@@ -926,21 +924,22 @@ function tickKeyboard() {
   const controls = Graph.controls();
   const speed = 3;
 
-  // Full 3D camera direction for W/S
-  const forward3D = new THREE.Vector3();
-  cam.getWorldDirection(forward3D);
-  // Horizontal-only for A/D strafing
-  const forwardH = forward3D.clone(); forwardH.y = 0;
-  if (forwardH.lengthSq() < 0.001) forwardH.set(0, 0, -1);
-  forwardH.normalize();
-  // Right = cross(up, forward) for correct left/right
-  const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forwardH).normalize();
+  // Extract camera's local axes from its world matrix
+  // This always matches what the user sees on screen
+  cam.updateMatrixWorld();
+  const m = cam.matrixWorld.elements;
+  // Camera's local right (first column)
+  const camRight = new THREE.Vector3(m[0], m[1], m[2]).normalize();
+  // Camera's local up (second column)
+  const camUp = new THREE.Vector3(m[4], m[5], m[6]).normalize();
+  // Camera's local forward (negative third column — camera looks down -Z)
+  const camForward = new THREE.Vector3(-m[8], -m[9], -m[10]).normalize();
 
   let move = new THREE.Vector3();
-  if (keysDown.has('KeyW')) move.addScaledVector(forward3D, speed);
-  if (keysDown.has('KeyS')) move.addScaledVector(forward3D, -speed);
-  if (keysDown.has('KeyA')) move.addScaledVector(right, -speed);
-  if (keysDown.has('KeyD')) move.addScaledVector(right, speed);
+  if (keysDown.has('KeyW')) move.addScaledVector(camForward, speed);
+  if (keysDown.has('KeyS')) move.addScaledVector(camForward, -speed);
+  if (keysDown.has('KeyA')) move.addScaledVector(camRight, -speed);
+  if (keysDown.has('KeyD')) move.addScaledVector(camRight, speed);
 
   if (move.lengthSq() > 0) {
     cam.position.add(move);
