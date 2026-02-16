@@ -181,7 +181,7 @@ const Graph = ForceGraph3D()(container)
     const deg = degree[node.id] || 1;
     const radius = 1.5 + Math.sqrt(deg / maxDeg) * 5;
 
-    // Group to hold sphere + label
+    // Group to hold sphere + label + hitbox
     const group = new THREE.Group();
 
     // Sphere
@@ -196,6 +196,12 @@ const Graph = ForceGraph3D()(container)
     });
     const sphere = new THREE.Mesh(geometry, material);
     group.add(sphere);
+
+    // Invisible hitbox — larger sphere for consistent hover/click detection
+    const hitGeo = new THREE.SphereGeometry(radius * 2.5, 8, 6);
+    const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+    const hitbox = new THREE.Mesh(hitGeo, hitMat);
+    group.add(hitbox);
 
     // Label sprite
     const sprite = new SpriteText(node.id);
@@ -520,37 +526,15 @@ function triggerSpreadActivation(node) {
   const fallbackDelay = (maxHop + 2) * hopDelayMs + pulseTravelMs + 200;
   const fallbackTid = setTimeout(() => {
     // Light all activated nodes
-    Object.keys(act).forEach(nid => {
-      const n = nodes.find(x => x.id === nid);
-      if (!n || !n.__sphere) return;
-      if (!litNodes.has(nid)) {
-        litNodes.add(nid);
-        n.__sphere.material.opacity = 1.0;
-        n.__sphere.material.emissiveIntensity = 0.6;
-        if (n.__label) n.__label.material.opacity = 1.0;
-      }
-    });
-    // Light all links between activated nodes, and ensure both endpoints are lit
+    Object.keys(act).forEach(nid => lightNode(nid));
+    // Light all links between activated nodes
     gData.links.forEach((link, i) => {
       const sid = typeof link.source === 'object' ? link.source.id : link.source;
       const tid2 = typeof link.target === 'object' ? link.target.id : link.target;
       if ((litNodes.has(sid) || act[sid]) && (litNodes.has(tid2) || act[tid2])) {
         if (!litLinks.has(i) && link.__lineObj) {
-          litLinks.add(i);
-          link.__lineObj.material.opacity = 0.8;
+          lightLink(link);
         }
-        // Ensure both endpoint nodes are lit
-        [sid, tid2].forEach(eid => {
-          if (!litNodes.has(eid)) {
-            const en = nodes.find(x => x.id === eid);
-            if (en && en.__sphere) {
-              litNodes.add(eid);
-              en.__sphere.material.opacity = 1.0;
-              en.__sphere.material.emissiveIntensity = 0.6;
-              if (en.__label) en.__label.material.opacity = 1.0;
-            }
-          }
-        });
       }
     });
   }, fallbackDelay);
@@ -583,11 +567,15 @@ function animatePulses(now) {
       // Opacity ramps up with pulse progress — stays at peak once reached
       const edgeOpacity = 0.1 + t * 0.9; // 0.1 → 1.0 as pulse travels
       p.link.__lineObj.material.opacity = Math.max(p.link.__lineObj.material.opacity, edgeOpacity);
-      // Mark this link as lit
       if (!p.__linkMarked) {
         const gData = Graph.graphData();
         const li = gData.links.indexOf(p.link);
         if (li >= 0) litLinks.add(li);
+        // Light both endpoints immediately when edge starts lighting
+        const sid = typeof p.link.source === 'object' ? p.link.source.id : p.link.source;
+        const tid2 = typeof p.link.target === 'object' ? p.link.target.id : p.link.target;
+        lightNode(sid);
+        lightNode(tid2);
         p.__linkMarked = true;
       }
     }
@@ -599,27 +587,12 @@ function animatePulses(now) {
       p.mesh.geometry.dispose();
       p.mesh.material.dispose();
 
-      // Ensure edge stays fully bright
-      if (p.link && p.link.__lineObj) {
-        p.link.__lineObj.material.opacity = 1.0;
-      }
+      // Ensure edge stays fully bright and both endpoints lit
+      if (p.link) lightLink(p.link);
 
-      // Light up target node using direct reference
-      const tgtNode = p.targetNode;
-      if (tgtNode && tgtNode.__sphere) {
-        litNodes.add(tgtNode.id);
-        tgtNode.__sphere.material.opacity = 1.0;
-        tgtNode.__sphere.material.emissiveIntensity = 0.6 + p.energy * 0.4;
-        if (tgtNode.__label) tgtNode.__label.material.opacity = 1.0;
-      }
-      // Also ensure source node stays lit
-      const srcNode = p.sourceNode;
-      if (srcNode && srcNode.__sphere && !litNodes.has(srcNode.id)) {
-        litNodes.add(srcNode.id);
-        srcNode.__sphere.material.opacity = 1.0;
-        srcNode.__sphere.material.emissiveIntensity = 0.6;
-        if (srcNode.__label) srcNode.__label.material.opacity = 1.0;
-      }
+      // Light up target and source nodes
+      if (p.targetNode) lightNode(p.targetNode.id);
+      if (p.sourceNode) lightNode(p.sourceNode.id);
     } else {
       anyActive = true;
     }
@@ -630,6 +603,30 @@ function animatePulses(now) {
   } else {
     pulseAnimRunning = false;
   }
+}
+
+function lightNode(nid) {
+  if (litNodes.has(nid)) return;
+  litNodes.add(nid);
+  const n = nodes.find(x => x.id === nid);
+  if (n && n.__sphere) {
+    n.__sphere.material.opacity = 1.0;
+    n.__sphere.material.emissiveIntensity = 0.6;
+    if (n.__label) n.__label.material.opacity = 1.0;
+  }
+}
+
+function lightLink(link) {
+  if (!link || !link.__lineObj) return;
+  link.__lineObj.material.opacity = 1.0;
+  const gData = Graph.graphData();
+  const li = gData.links.indexOf(link);
+  if (li >= 0) litLinks.add(li);
+  // Always light both endpoints
+  const sid = typeof link.source === 'object' ? link.source.id : link.source;
+  const tid = typeof link.target === 'object' ? link.target.id : link.target;
+  lightNode(sid);
+  lightNode(tid);
 }
 
 function resetSpread() {
