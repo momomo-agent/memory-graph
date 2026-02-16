@@ -290,12 +290,12 @@ const Graph = ForceGraph3D()(container)
   // Click — spread activation
   .onNodeClick(node => {
     if (spreadActive && clickedNode === node) {
-      // Clicking same node again — restore all
+      // Clicking same node again — restore all (animated)
       restoreAll();
       return;
     }
-    // New node — reset previous spread first, then start fresh
-    restoreAll();
+    // New node — reset previous spread instantly, then start fresh
+    restoreAll(true);
     clickedNode = node;
     triggerSpreadActivation(node);
     showTooltip(node);
@@ -463,12 +463,19 @@ function triggerSpreadActivation(node) {
     if (link.__lineObj) link.__lineObj.material.opacity = 0; 
   });
 
-  // Light up seed node immediately with a flash
+  // Light up seed node with glow-in animation
   litNodes.add(node.id);
   if (node.__sphere) {
-    node.__sphere.material.opacity = 1.0;
-    node.__sphere.material.emissiveIntensity = 1.0;
-    if (node.__label) node.__label.material.opacity = 1.0;
+    const s = node.__sphere, lbl = node.__label;
+    const s0 = s.material.opacity, e0 = s.material.emissiveIntensity, l0 = lbl ? lbl.material.opacity : 0;
+    const t0 = performance.now();
+    (function anim() {
+      const p = Math.min((performance.now() - t0) / 250, 1), ease = p * (2 - p);
+      s.material.opacity = s0 + (1.0 - s0) * ease;
+      s.material.emissiveIntensity = e0 + (1.0 - e0) * ease;
+      if (lbl) lbl.material.opacity = l0 + (1.0 - l0) * ease;
+      if (p < 1) requestAnimationFrame(anim);
+    })();
   }
 
   const scene = Graph.scene();
@@ -614,18 +621,43 @@ function animatePulses(now) {
   }
 }
 
-function restoreAll() {
+function restoreAll(instant) {
   resetSpread();
   litNodes.clear();
   litLinks.clear();
-  nodes.forEach(n => {
-    if (!n.__sphere) return;
-    n.__sphere.material.opacity = 0.85;
-    n.__sphere.material.emissiveIntensity = 0.3;
-    if (n.__label) n.__label.material.opacity = 0.85;
-  });
   const gData = Graph.graphData();
-  gData.links.forEach(link => { if (link.__lineObj) link.__lineObj.material.opacity = 0.4; });
+  if (instant) {
+    nodes.forEach(n => {
+      if (!n.__sphere) return;
+      n.__sphere.material.opacity = 0.85;
+      n.__sphere.material.emissiveIntensity = 0.3;
+      if (n.__label) n.__label.material.opacity = 0.85;
+    });
+    gData.links.forEach(link => { if (link.__lineObj) link.__lineObj.material.opacity = 0.4; });
+  } else {
+    const nSnaps = [];
+    nodes.forEach(n => {
+      if (!n.__sphere) return;
+      nSnaps.push({ s: n.__sphere, lbl: n.__label, o0: n.__sphere.material.opacity, e0: n.__sphere.material.emissiveIntensity, l0: n.__label ? n.__label.material.opacity : 0 });
+    });
+    const lSnaps = [];
+    gData.links.forEach(link => {
+      if (link.__lineObj) lSnaps.push({ obj: link.__lineObj, o0: link.__lineObj.material.opacity });
+    });
+    const t0 = performance.now();
+    (function anim() {
+      const p = Math.min((performance.now() - t0) / 350, 1), ease = p * (2 - p);
+      nSnaps.forEach(d => {
+        d.s.material.opacity = d.o0 + (0.85 - d.o0) * ease;
+        d.s.material.emissiveIntensity = d.e0 + (0.3 - d.e0) * ease;
+        if (d.lbl) d.lbl.material.opacity = d.l0 + (0.85 - d.l0) * ease;
+      });
+      lSnaps.forEach(d => {
+        d.obj.material.opacity = d.o0 + (0.4 - d.o0) * ease;
+      });
+      if (p < 1) requestAnimationFrame(anim);
+    })();
+  }
   clickedNode = null;
   document.getElementById('tooltip').style.display = 'none';
 }
@@ -635,18 +667,33 @@ function lightNode(nid) {
   litNodes.add(nid);
   const n = nodes.find(x => x.id === nid);
   if (n && n.__sphere) {
-    n.__sphere.material.opacity = 1.0;
-    n.__sphere.material.emissiveIntensity = 0.6;
-    if (n.__label) n.__label.material.opacity = 1.0;
+    const s = n.__sphere, lbl = n.__label;
+    const s0 = s.material.opacity, e0 = s.material.emissiveIntensity, l0 = lbl ? lbl.material.opacity : 0;
+    const t0 = performance.now();
+    (function anim() {
+      const p = Math.min((performance.now() - t0) / 200, 1), ease = p * (2 - p);
+      s.material.opacity = s0 + (1.0 - s0) * ease;
+      s.material.emissiveIntensity = e0 + (0.6 - e0) * ease;
+      if (lbl) lbl.material.opacity = l0 + (1.0 - l0) * ease;
+      if (p < 1) requestAnimationFrame(anim);
+    })();
   }
 }
 
 function lightLink(link) {
   if (!link || !link.__lineObj) return;
-  link.__lineObj.material.opacity = 1.0;
   const gData = Graph.graphData();
   const li = gData.links.indexOf(link);
   if (li >= 0) litLinks.add(li);
+  // Animate line opacity
+  const obj = link.__lineObj;
+  const s0 = obj.material.opacity;
+  const t0 = performance.now();
+  (function anim() {
+    const p = Math.min((performance.now() - t0) / 200, 1), ease = p * (2 - p);
+    obj.material.opacity = s0 + (1.0 - s0) * ease;
+    if (p < 1) requestAnimationFrame(anim);
+  })();
   // Always light both endpoints
   const sid = typeof link.source === 'object' ? link.source.id : link.source;
   const tid = typeof link.target === 'object' ? link.target.id : link.target;
