@@ -451,26 +451,53 @@ function triggerSpreadActivation(node) {
     }
   }
 
-  // Dim only nodes/links not previously lit by spread
+  // Dim nodes/links with animation (not instant)
+  const dimDur = 300;
+  const dimT0 = performance.now();
+  const dimTargets = [];
   nodes.forEach(n => {
     if (!n.__sphere) return;
-    if (litNodes.has(n.id)) return; // already lit, keep bright
-    n.__sphere.material.opacity = 0.03;
-    n.__sphere.material.emissiveIntensity = 0.01;
-    if (n.__label) n.__label.material.opacity = 0.02;
+    if (litNodes.has(n.id)) return;
+    dimTargets.push({ sphere: n.__sphere, label: n.__label, startOp: n.__sphere.material.opacity, startEm: n.__sphere.material.emissiveIntensity, startLbl: n.__label ? n.__label.material.opacity : 0 });
   });
+  const dimLinks = [];
   const gData = Graph.graphData();
-  gData.links.forEach((link, i) => { 
-    if (litLinks.has(i)) return; // already lit
-    if (link.__lineObj) link.__lineObj.material.opacity = 0; 
+  gData.links.forEach((link, i) => {
+    if (litLinks.has(i)) return;
+    if (link.__lineObj) dimLinks.push({ obj: link.__lineObj, startOp: link.__lineObj.material.opacity });
   });
+  const animDim = () => {
+    const p = Math.min((performance.now() - dimT0) / dimDur, 1);
+    const ease = p * (2 - p);
+    dimTargets.forEach(d => {
+      d.sphere.material.opacity = d.startOp + (0.03 - d.startOp) * ease;
+      d.sphere.material.emissiveIntensity = d.startEm + (0.01 - d.startEm) * ease;
+      if (d.label) d.label.material.opacity = d.startLbl + (0.02 - d.startLbl) * ease;
+    });
+    dimLinks.forEach(d => {
+      d.obj.material.opacity = d.startOp + (0 - d.startOp) * ease;
+    });
+    if (p < 1) requestAnimationFrame(animDim);
+  };
+  requestAnimationFrame(animDim);
 
-  // Light up seed node immediately with a flash
+  // Light up seed node with animation
   litNodes.add(node.id);
   if (node.__sphere) {
-    node.__sphere.material.opacity = 1.0;
-    node.__sphere.material.emissiveIntensity = 1.0;
-    if (node.__label) node.__label.material.opacity = 1.0;
+    const seedT0 = performance.now();
+    const seedDur = 300;
+    const sOp = node.__sphere.material.opacity;
+    const sEm = node.__sphere.material.emissiveIntensity;
+    const sLbl = node.__label ? node.__label.material.opacity : 0;
+    const animSeed = () => {
+      const p = Math.min((performance.now() - seedT0) / seedDur, 1);
+      const ease = p * (2 - p);
+      node.__sphere.material.opacity = sOp + (1.0 - sOp) * ease;
+      node.__sphere.material.emissiveIntensity = sEm + (1.0 - sEm) * ease;
+      if (node.__label) node.__label.material.opacity = sLbl + (1.0 - sLbl) * ease;
+      if (p < 1) requestAnimationFrame(animSeed);
+    };
+    requestAnimationFrame(animSeed);
   }
 
   const scene = Graph.scene();
@@ -635,14 +662,32 @@ function restoreAll() {
   resetSpread();
   litNodes.clear();
   litLinks.clear();
+  const dur = 400;
+  const t0 = performance.now();
+  const nodeSnaps = [];
   nodes.forEach(n => {
     if (!n.__sphere) return;
-    n.__sphere.material.opacity = 0.85;
-    n.__sphere.material.emissiveIntensity = 0.3;
-    if (n.__label) n.__label.material.opacity = 0.85;
+    nodeSnaps.push({ sphere: n.__sphere, label: n.__label, startOp: n.__sphere.material.opacity, startEm: n.__sphere.material.emissiveIntensity, startLbl: n.__label ? n.__label.material.opacity : 0 });
   });
+  const linkSnaps = [];
   const gData = Graph.graphData();
-  gData.links.forEach(link => { if (link.__lineObj) link.__lineObj.material.opacity = 0.4; });
+  gData.links.forEach(link => {
+    if (link.__lineObj) linkSnaps.push({ obj: link.__lineObj, startOp: link.__lineObj.material.opacity });
+  });
+  const animRestore = () => {
+    const p = Math.min((performance.now() - t0) / dur, 1);
+    const ease = p * (2 - p);
+    nodeSnaps.forEach(d => {
+      d.sphere.material.opacity = d.startOp + (0.85 - d.startOp) * ease;
+      d.sphere.material.emissiveIntensity = d.startEm + (0.3 - d.startEm) * ease;
+      if (d.label) d.label.material.opacity = d.startLbl + (0.85 - d.startLbl) * ease;
+    });
+    linkSnaps.forEach(d => {
+      d.obj.material.opacity = d.startOp + (0.4 - d.startOp) * ease;
+    });
+    if (p < 1) requestAnimationFrame(animRestore);
+  };
+  requestAnimationFrame(animRestore);
   clickedNode = null;
   document.getElementById('tooltip').style.display = 'none';
 }
@@ -652,27 +697,46 @@ function lightNode(nid) {
   litNodes.add(nid);
   const n = nodes.find(x => x.id === nid);
   if (n && n.__sphere) {
-    n.__sphere.material.opacity = 1.0;
-    n.__sphere.material.emissiveIntensity = 0.6;
-    if (n.__label) n.__label.material.opacity = 1.0;
+    // Animate from current to bright over 250ms
+    const startOp = n.__sphere.material.opacity;
+    const startEm = n.__sphere.material.emissiveIntensity;
+    const startLbl = n.__label ? n.__label.material.opacity : 0;
+    const t0 = performance.now();
+    const dur = 250;
+    const anim = () => {
+      const p = Math.min((performance.now() - t0) / dur, 1);
+      const ease = p * (2 - p); // ease-out
+      n.__sphere.material.opacity = startOp + (1.0 - startOp) * ease;
+      n.__sphere.material.emissiveIntensity = startEm + (0.6 - startEm) * ease;
+      if (n.__label) n.__label.material.opacity = startLbl + (1.0 - startLbl) * ease;
+      if (p < 1) requestAnimationFrame(anim);
+    };
+    requestAnimationFrame(anim);
   }
 }
 
 function lightLink(link) {
   if (!link) return;
-  // Try to light the __lineObj, retry if not yet created
   const doLight = () => {
     if (link.__lineObj) {
-      link.__lineObj.material.opacity = 1.0;
+      // Animate from current to bright over 250ms
+      const startOp = link.__lineObj.material.opacity;
+      const t0 = performance.now();
+      const dur = 250;
+      const anim = () => {
+        const p = Math.min((performance.now() - t0) / dur, 1);
+        const ease = p * (2 - p);
+        link.__lineObj.material.opacity = startOp + (1.0 - startOp) * ease;
+        if (p < 1) requestAnimationFrame(anim);
+      };
+      requestAnimationFrame(anim);
       const gData = Graph.graphData();
       const li = gData.links.indexOf(link);
       if (li >= 0) litLinks.add(li);
     } else {
-      // __lineObj not yet created, retry next frame
       requestAnimationFrame(doLight);
       return;
     }
-    // Always light both endpoints
     const sid = typeof link.source === 'object' ? link.source.id : link.source;
     const tid = typeof link.target === 'object' ? link.target.id : link.target;
     lightNode(sid);
