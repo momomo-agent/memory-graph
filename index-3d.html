@@ -1017,17 +1017,32 @@ function animate(time) {
   requestAnimationFrame(animate);
   const t = time * 0.001;
 
-  // Glow animation — active nodes pulse emissive, inactive stay still
+  // Glow animation — active nodes + active links pulse like electric current
   if (!spreadActive) {
     const pulse = Math.sin(t * 2) * 0.5 + 0.5;
+
+    // Active nodes
     nodes.forEach(node => {
       if (!node.__sphere) return;
       if (node.__active) {
         node.__sphere.material.emissiveIntensity = 0.3 + pulse * 1.2;
         node.__sphere.material.opacity = 0.6 + pulse * 0.4;
-        const s = 1 + pulse * 0.08;
+        const s = 1 + pulse * 0.06;
         node.__sphere.scale.set(s, s, s);
       }
+    });
+
+    // Active links (today)
+    links.forEach(link => {
+      const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+      const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+      const key = srcId + '→' + tgtId;
+      const keyR = tgtId + '→' + srcId;
+      const active = _activeEdges3d.has(key) || _activeEdges3d.has(keyR);
+      if (!link.__customMat) return;
+      const w = link.weight || 1;
+      const base = 0.1 + Math.min(w / 8, 1) * 0.7;
+      link.__customMat.opacity = active ? Math.min(1, 0.35 + pulse * 0.65) : base;
     });
   }
 
