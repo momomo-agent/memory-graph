@@ -1156,6 +1156,11 @@ if (typeof graphChangelog !== 'undefined' && graphChangelog.length) {
   }
 }
 
+// === WINDOW RESIZE ===
+window.addEventListener('resize', () => {
+  Graph.width(window.innerWidth).height(window.innerHeight);
+});
+
 </script>
 </body>
 </html>
