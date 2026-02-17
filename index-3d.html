@@ -1063,6 +1063,7 @@ window.addEventListener('mouseup', () => { isDragging = false; });
 window.addEventListener('wheel', e => {
   if (e.target.tagName === 'INPUT') return;
   e.preventDefault();
+  e.stopImmediatePropagation();
   const cam = Graph.camera();
   const controls = Graph.controls();
   cam.updateMatrixWorld();
