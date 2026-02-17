@@ -1035,9 +1035,9 @@ setTimeout(() => {
   const renderPass = new THREE.RenderPass(scene, camera);
   const bloomPass = new THREE.UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    6.0,  // strength (更更炸裂)
-    1.2,  // radius
-    0.0   // threshold
+    3.5,  // strength
+    0.9,  // radius
+    0.05  // threshold
   );
 
   const bloomComposer = new THREE.EffectComposer(renderer);
@@ -1048,34 +1048,12 @@ setTimeout(() => {
   const finalComposer = new THREE.EffectComposer(renderer);
   finalComposer.addPass(renderPass);
 
-  // Add bloom result on top (additive) via a fullscreen quad
-  const bloomStrength = 5.0; // extra boost on top of UnrealBloomPass
-  const mixPass = new THREE.ShaderPass({
-    uniforms: {
-      baseTexture: { value: null },
-      bloomTexture: { value: bloomComposer.renderTarget1.texture },
-      strength: { value: bloomStrength }
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D baseTexture;
-      uniform sampler2D bloomTexture;
-      uniform float strength;
-      varying vec2 vUv;
-      void main() {
-        vec4 base = texture2D(baseTexture, vUv);
-        vec4 bloom = texture2D(bloomTexture, vUv);
-        gl_FragColor = base + bloom * strength;
-      }
-    `
-  }, 'baseTexture');
-  finalComposer.addPass(mixPass);
+  // Composite: render full scene, then draw bloom result on top.
+  // We intentionally keep this simple and reliable.
+  const copyPass = new THREE.ShaderPass(THREE.CopyShader);
+  copyPass.uniforms.opacity.value = 1.0;
+  copyPass.needsSwap = true;
+  finalComposer.addPass(copyPass);
 
   // FXAA for the final output (helps bloom edges)
   const fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
