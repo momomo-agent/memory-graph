@@ -302,7 +302,9 @@ const Graph = ForceGraph3D()(container)
       const c1 = new THREE.Color(getColor(srcId));
       const c2 = new THREE.Color(getColor(tgtId));
       c1.lerp(c2, 0.5);
-      link.__customMat = new THREE.LineBasicMaterial({ color: c1, transparent: true, opacity: 0.4, depthWrite: false });
+      const w = link.weight || 1;
+      const opacity = 0.15 + Math.min(w / 8, 1) * 0.45;
+      link.__customMat = new THREE.LineBasicMaterial({ color: c1, transparent: true, opacity, depthWrite: false });
     }
     return link.__customMat;
   })
