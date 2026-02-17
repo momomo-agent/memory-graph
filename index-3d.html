@@ -635,6 +635,8 @@ function triggerSpreadActivation(node) {
         depthWrite: false, linewidth: 2
       });
       const currentLine = new THREE.Line(geo, mat);
+      // Spread current should always bloom
+      markBloom(currentLine, true);
       scene.add(currentLine);
 
       pulseParticles.push({
@@ -1012,9 +1014,18 @@ setTimeout(() => {
   pl2.position.set(-100, -50, -100);
   scene.add(pl2);
 
-  // Mark today's active nodes for bloom
+  // Mark today's active nodes + active links for bloom
   nodes.forEach(n => {
     if (n.__sphere) markBloom(n.__sphere, !!n.__active);
+  });
+  links.forEach(l => {
+    const srcId = typeof l.source === 'object' ? l.source.id : l.source;
+    const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
+    const key = srcId + '→' + tgtId;
+    const keyR = tgtId + '→' + srcId;
+    if (_activeEdges3d.has(key) || _activeEdges3d.has(keyR)) {
+      if (l.__lineObj) markBloom(l.__lineObj, true);
+    }
   });
 
   // Postprocessing pipeline
@@ -1024,9 +1035,9 @@ setTimeout(() => {
   const renderPass = new THREE.RenderPass(scene, camera);
   const bloomPass = new THREE.UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    2.0,  // strength (炸裂)
-    0.6,  // radius
-    0.15  // threshold
+    3.5,  // strength (更炸裂)
+    0.9,  // radius
+    0.05  // threshold
   );
 
   const bloomComposer = new THREE.EffectComposer(renderer);
