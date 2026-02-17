@@ -1057,41 +1057,41 @@ window.addEventListener('keyup', e => keysDown.delete(e.code));
 window.addEventListener('mousedown', () => { isDragging = true; });
 window.addEventListener('mouseup', () => { isDragging = false; });
 
-// Block OrbitControls dolly — remove its internal wheel listener
+// Block OrbitControls dolly
 setTimeout(() => {
   const controls = Graph.controls();
   if (controls) {
     controls.enableZoom = false;
     controls.enablePan = false;
-    // OrbitControls stores its wheel handler — override dollyIn/dollyOut to no-op
-    controls.dollyIn = () => {};
-    controls.dollyOut = () => {};
+  }
+  // Bind our wheel handler on canvas capture phase, before OrbitControls
+  const canvas = document.querySelector('#graph-container canvas');
+  if (canvas) {
+    canvas.addEventListener('wheel', handleWheel, { capture: true, passive: false });
   }
 }, 200);
 
-// Scroll/trackpad = fly through the graph
-// Two-finger drag (deltaX/deltaY without ctrlKey) = strafe + forward/back
-// Pinch zoom (ctrlKey + deltaY) = forward/back
-window.addEventListener('wheel', e => {
+function handleWheel(e) {
   if (e.target.tagName === 'INPUT') return;
   e.preventDefault();
+  e.stopPropagation();
   const cam = Graph.camera();
   const controls = Graph.controls();
   cam.updateMatrixWorld();
   const m = cam.matrixWorld.elements;
   const camRight = new THREE.Vector3(m[0], m[1], m[2]).normalize();
   const camForward = new THREE.Vector3(-m[8], -m[9], -m[10]).normalize();
+  const camUp = new THREE.Vector3(m[4], m[5], m[6]).normalize();
 
   if (e.ctrlKey) {
-    // Pinch zoom = fly forward/back
+    // Pinch = forward/back
     const speed = e.deltaY < 0 ? 6 : -6;
     cam.position.addScaledVector(camForward, speed);
     controls.target.addScaledVector(camForward, speed);
   } else {
-    // Two-finger drag = same as WASD: left/right + up/down
+    // Two-finger drag = left/right + up/down (same as WASD)
     const speedX = -e.deltaX * 0.15;
     const speedY = e.deltaY * 0.15;
-    const camUp = new THREE.Vector3(m[4], m[5], m[6]).normalize();
     const move = new THREE.Vector3();
     move.addScaledVector(camRight, speedX);
     move.addScaledVector(camUp, speedY);
@@ -1099,7 +1099,7 @@ window.addEventListener('wheel', e => {
     controls.target.add(move);
   }
   controls.update();
-}, { passive: false });
+}
 
 function tickKeyboard() {
   requestAnimationFrame(tickKeyboard);
@@ -1124,6 +1124,8 @@ function tickKeyboard() {
   if (keysDown.has('KeyS')) move.addScaledVector(camUp, -speed);
   if (keysDown.has('KeyA')) move.addScaledVector(camRight, -speed);
   if (keysDown.has('KeyD')) move.addScaledVector(camRight, speed);
+  if (keysDown.has('KeyQ')) move.addScaledVector(camForward, speed);
+  if (keysDown.has('KeyE')) move.addScaledVector(camForward, -speed);
 
   if (move.lengthSq() > 0) {
     cam.position.add(move);
