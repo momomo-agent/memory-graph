@@ -1087,7 +1087,9 @@ setTimeout(() => {
   Graph.postProcessingComposer(null);
 
   function darkenNonBloom(obj) {
-    if (obj.isMesh && bloomLayer.test(obj.layers) === false) {
+    // Darken everything not in bloom layer.
+    // Handle BOTH Mesh and Line (current is a Line).
+    if ((obj.isMesh || obj.isLine) && bloomLayer.test(obj.layers) === false) {
       materials[obj.uuid] = obj.material;
       obj.material = darkMaterial;
     }
