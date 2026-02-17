@@ -1078,7 +1078,7 @@ window.addEventListener('wheel', e => {
   } else {
     // Two-finger drag = strafe left/right (X) + pan up/down (Y)
     const speedX = -e.deltaX * 0.15;
-    const speedY = e.deltaY * 0.15;
+    const speedY = -e.deltaY * 0.15;
     const camUp = new THREE.Vector3(m[4], m[5], m[6]).normalize();
     const move = new THREE.Vector3();
     move.addScaledVector(camRight, speedX);
@@ -1108,8 +1108,8 @@ function tickKeyboard() {
   const camForward = new THREE.Vector3(-m[8], -m[9], -m[10]).normalize();
 
   let move = new THREE.Vector3();
-  if (keysDown.has('KeyW')) move.addScaledVector(camForward, speed);
-  if (keysDown.has('KeyS')) move.addScaledVector(camForward, -speed);
+  if (keysDown.has('KeyW')) move.addScaledVector(camUp, speed);
+  if (keysDown.has('KeyS')) move.addScaledVector(camUp, -speed);
   if (keysDown.has('KeyA')) move.addScaledVector(camRight, -speed);
   if (keysDown.has('KeyD')) move.addScaledVector(camRight, speed);
 
