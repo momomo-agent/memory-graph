@@ -196,10 +196,13 @@ const defs = svg.append("defs");
 });
 
 // Active node glow filter (electric pulse)
-const af = defs.append("filter").attr("id", "activeGlow").attr("x", "-150%").attr("y", "-150%").attr("width", "400%").attr("height", "400%");
-af.append("feGaussianBlur").attr("in", "SourceGraphic").attr("stdDeviation", "8").attr("result", "blur");
-af.append("feColorMatrix").attr("in", "blur").attr("type", "saturate").attr("values", "4").attr("result", "bright");
+const af = defs.append("filter").attr("id", "activeGlow").attr("x", "-200%").attr("y", "-200%").attr("width", "500%").attr("height", "500%");
+af.append("feGaussianBlur").attr("in", "SourceGraphic").attr("stdDeviation", "12").attr("result", "blur");
+// Boost saturation and brightness for electric feel
+const cm = af.append("feColorMatrix").attr("in", "blur").attr("type", "matrix").attr("result", "bright");
+cm.attr("values", "1.8 0 0 0 0  0 1.8 0 0 0  0 0 1.8 0 0  0 0 0 1 0");
 const am = af.append("feMerge");
+am.append("feMergeNode").attr("in", "bright");
 am.append("feMergeNode").attr("in", "bright");
 am.append("feMergeNode").attr("in", "bright");
 am.append("feMergeNode").attr("in", "SourceGraphic");
@@ -303,16 +306,17 @@ function breatheNodes() {
   const pulse = Math.sin(t * 2) * 0.5 + 0.5; // 0-1
   // Active nodes: stronger pulsing glow
   nodeEls.filter(d => _activeNodes.has(d.id))
-    .attr("fill-opacity", 0.5 + pulse * 0.5)
-    .style("filter", `url(#activeGlow) brightness(${1 + pulse * 0.8})`);
-  // Active edges: stronger pulsing
+    .attr("fill-opacity", 0.35 + pulse * 0.65)
+    .style("filter", `url(#activeGlow) brightness(${1.2 + pulse * 1.2})`);
+
+  // Active edges: thicker + brighter + more glow
   linkEls.filter(d => {
     const key = (d.source.id || d.source) + '→' + (d.target.id || d.target);
     const keyR = (d.target.id || d.target) + '→' + (d.source.id || d.source);
     return _activeEdges.has(key) || _activeEdges.has(keyR);
-  }).attr("stroke-opacity", 0.3 + pulse * 0.7)
-    .attr("stroke-width", d => wScale(d.weight) * (1 + pulse * 0.5))
-    .style("filter", "url(#glow1)");
+  }).attr("stroke-opacity", 0.15 + pulse * 0.85)
+    .attr("stroke-width", d => wScale(d.weight) * (1.6 + pulse * 0.9))
+    .style("filter", "url(#glow2)");
   requestAnimationFrame(breatheNodes);
 }
 if (_activeNodes.size > 0) requestAnimationFrame(breatheNodes);
