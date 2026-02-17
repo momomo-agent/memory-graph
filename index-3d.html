@@ -1061,8 +1061,10 @@ setTimeout(() => {
   fxaaPass.material.uniforms['resolution'].value.y = 1 / (window.innerHeight * renderer.getPixelRatio());
   finalComposer.addPass(fxaaPass);
 
-  // Override render loop to do selective bloom + final compose
-  Graph.postProcessingComposer(null);
+  // Let ForceGraph keep running its internal render loop; we only attach composers for it to use.
+  // (If we null this, the library keeps rendering without our postprocessing.)
+  // We'll pass our composer to ForceGraph.
+  // Graph.postProcessingComposer(null);
 
   function darkenNonBloom(obj) {
     // Darken everything not in bloom layer.
@@ -1079,37 +1081,41 @@ setTimeout(() => {
     }
   }
 
-  const oldAnimate = animate;
+  // Use ForceGraph's postProcessingComposer hook.
+  // We keep a separate bloomComposer for the bloom pass, and a finalComposer for the final output.
+  // ForceGraph will call finalComposer.render() every frame.
   let bloomDebug = false;
   window.addEventListener('keydown', e => {
     if (e.code === 'KeyB') bloomDebug = !bloomDebug;
   });
 
-  animate = function(time) {
-    requestAnimationFrame(animate);
+  Graph.postProcessingComposer({
+    render() {
+      // Update bloom masks every frame (nodes might not be ready at init)
+      nodes.forEach(n => { if (n.__sphere) markBloom(n.__sphere, !!n.__active); });
+      links.forEach(l => {
+        const srcId = typeof l.source === 'object' ? l.source.id : l.source;
+        const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
+        const key = srcId + '→' + tgtId;
+        const keyR = tgtId + '→' + srcId;
+        if ((_activeEdges3d.has(key) || _activeEdges3d.has(keyR)) && l.__lineObj) markBloom(l.__lineObj, true);
+      });
 
-    // Run the original per-frame updates (NO rAF inside)
-    oldAnimate(time);
+      // Bloom pass
+      camera.layers.set(BLOOM_LAYER);
+      scene.traverse(darkenNonBloom);
+      bloomComposer.render();
+      scene.traverse(restoreMaterial);
 
-    // Render bloom only to its RT
-    camera.layers.set(BLOOM_LAYER);
-    scene.traverse(darkenNonBloom);
-    bloomComposer.render();
-    scene.traverse(restoreMaterial);
-
-    // Render final
-    camera.layers.set(0);
-    if (bloomDebug) {
-      // Show only bloom (helps verify pipeline)
-      renderer.setClearColor(0x000000, 1);
-      renderer.clear();
-      renderer.render(scene, camera);
-      // Then draw bloom RT additively via the composer
-      finalComposer.render();
-    } else {
+      // Final pass
+      camera.layers.set(0);
+      if (bloomDebug) {
+        // Show bloom only (still through finalComposer so it hits the canvas)
+        renderer.setClearColor(0x000000, 1);
+      }
       finalComposer.render();
     }
-  };
+  });
 }, 120);
 
 // === PARTICLE FLOW (strong links w >= 5) ===
@@ -1137,7 +1143,7 @@ setTimeout(() => {
 
 // === ANIMATION LOOP (breathing + particles) ===
 function animate(time) {
-  // NOTE: rAF is managed by the bloom wrapper when enabled.
+  // NOTE: ForceGraph owns the render loop; we only update simulation visuals here.
   const t = time * 0.001;
 
   // Glow animation — active nodes + active links pulse like electric current
