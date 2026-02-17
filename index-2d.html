@@ -195,6 +195,14 @@ const defs = svg.append("defs");
   m.append("feMergeNode").attr("in", "SourceGraphic");
 });
 
+// Active node glow filter (electric pulse)
+const af = defs.append("filter").attr("id", "activeGlow").attr("x", "-100%").attr("y", "-100%").attr("width", "300%").attr("height", "300%");
+af.append("feGaussianBlur").attr("in", "SourceGraphic").attr("stdDeviation", "4").attr("result", "blur");
+af.append("feColorMatrix").attr("in", "blur").attr("type", "saturate").attr("values", "3").attr("result", "bright");
+const am = af.append("feMerge");
+am.append("feMergeNode").attr("in", "bright");
+am.append("feMergeNode").attr("in", "SourceGraphic");
+
 const g = svg.append("g");
 
 // zoom — trackpad: two-finger swipe = pan, pinch = zoom
@@ -283,20 +291,25 @@ const _activeEdges = new Set((typeof todayActive !== 'undefined' ? todayActive.e
 const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
   .attr("r", d => rScale(degree[d.id] || 1))
   .attr("fill", d => `url(#ng-${d.id.replace(/[^a-zA-Z0-9-]/g, '_')})`)
-  .attr("stroke", d => _activeNodes.has(d.id) ? getColor(d.id) : "none")
-  .attr("stroke-width", d => _activeNodes.has(d.id) ? 1.5 : 0)
+  .attr("stroke", "none")
   .attr("fill-opacity", d => 0.9 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.1)
-  .style("filter", "none")
+  .style("filter", d => _activeNodes.has(d.id) ? "url(#activeGlow)" : "none")
   .style("cursor", "grab");
 
-// Breathing animation for today's active nodes
+// Electric glow animation for today's active nodes/edges
 function breatheNodes() {
   const t = Date.now() / 1000;
+  const pulse = Math.sin(t * 2) * 0.5 + 0.5; // 0-1
+  // Active nodes: pulsing glow opacity
   nodeEls.filter(d => _activeNodes.has(d.id))
-    .attr("stroke-opacity", Math.sin(t * 1.5) * 0.3 + 0.7)
-    .attr("stroke-width", Math.sin(t * 1.5) * 0.5 + 1.5);
-  linkEls.filter(d => _activeEdges.has(d.source.id + '→' + d.target.id) || _activeEdges.has(d.target.id + '→' + d.source.id))
-    .attr("stroke-opacity", Math.sin(t * 1.5) * 0.2 + 0.7);
+    .attr("fill-opacity", 0.7 + pulse * 0.3);
+  // Active edges: pulsing opacity
+  linkEls.filter(d => {
+    const key = (d.source.id || d.source) + '→' + (d.target.id || d.target);
+    const keyR = (d.target.id || d.target) + '→' + (d.source.id || d.source);
+    return _activeEdges.has(key) || _activeEdges.has(keyR);
+  }).attr("stroke-opacity", 0.4 + pulse * 0.6)
+    .style("filter", pulse > 0.5 ? "url(#glow1)" : "none");
   requestAnimationFrame(breatheNodes);
 }
 if (_activeNodes.size > 0) requestAnimationFrame(breatheNodes);

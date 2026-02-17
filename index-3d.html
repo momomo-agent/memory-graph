@@ -1017,16 +1017,14 @@ function animate(time) {
   requestAnimationFrame(animate);
   const t = time * 0.001;
 
-  // Breathing animation — active nodes breathe stronger
+  // Glow animation — active nodes pulse emissive, inactive stay still
   if (!spreadActive) {
+    const pulse = Math.sin(t * 2) * 0.5 + 0.5;
     nodes.forEach(node => {
       if (!node.__sphere) return;
-      const phase = node.__breathPhase || 0;
-      const amp = node.__active ? 0.15 : 0.04;
-      const breathScale = 1 + amp * Math.sin(t * 1.5 + phase);
-      node.__sphere.scale.set(breathScale, breathScale, breathScale);
       if (node.__active) {
-        node.__sphere.material.emissiveIntensity = 0.3 + 0.25 * Math.sin(t * 1.5 + phase);
+        node.__sphere.material.emissiveIntensity = 0.2 + pulse * 0.6;
+        node.__sphere.material.opacity = 0.7 + pulse * 0.3;
       }
     });
   }
