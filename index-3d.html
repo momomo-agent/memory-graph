@@ -1076,12 +1076,13 @@ window.addEventListener('wheel', e => {
     cam.position.addScaledVector(camForward, speed);
     controls.target.addScaledVector(camForward, speed);
   } else {
-    // Two-finger drag = strafe (X) + forward/back (Y)
+    // Two-finger drag = strafe left/right (X) + pan up/down (Y)
     const speedX = -e.deltaX * 0.15;
-    const speedY = -e.deltaY * 0.15;
+    const speedY = e.deltaY * 0.15;
+    const camUp = new THREE.Vector3(m[4], m[5], m[6]).normalize();
     const move = new THREE.Vector3();
     move.addScaledVector(camRight, speedX);
-    move.addScaledVector(camForward, speedY);
+    move.addScaledVector(camUp, speedY);
     cam.position.add(move);
     controls.target.add(move);
   }
