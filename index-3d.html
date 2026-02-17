@@ -1057,10 +1057,16 @@ window.addEventListener('keyup', e => keysDown.delete(e.code));
 window.addEventListener('mousedown', () => { isDragging = true; });
 window.addEventListener('mouseup', () => { isDragging = false; });
 
-// Block OrbitControls dolly — capture phase on the renderer's canvas
+// Block OrbitControls dolly — remove its internal wheel listener
 setTimeout(() => {
-  const canvas = document.querySelector('#graph-container canvas');
-  if (canvas) canvas.addEventListener('wheel', e => e.stopPropagation(), { capture: true });
+  const controls = Graph.controls();
+  if (controls) {
+    controls.enableZoom = false;
+    controls.enablePan = false;
+    // OrbitControls stores its wheel handler — override dollyIn/dollyOut to no-op
+    controls.dollyIn = () => {};
+    controls.dollyOut = () => {};
+  }
 }, 200);
 
 // Scroll/trackpad = fly through the graph
