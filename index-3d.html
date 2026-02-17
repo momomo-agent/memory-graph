@@ -300,8 +300,8 @@ const Graph = ForceGraph3D()(container)
     return (srcId + tgtId).split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 628 / 100;
   })
   .linkMaterial(link => {
-    // Cache material on the link object so library reuses the same ref each frame
-    // This lets us modify opacity for dim/spread without the library overwriting it
+    // Cache material on the link object so library reuses the same ref each frame.
+    // We'll pulse opacity + emissive later for today's active links.
     if (!link.__customMat) {
       const srcId = typeof link.source === 'object' ? link.source.id : link.source;
       const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
@@ -310,7 +310,13 @@ const Graph = ForceGraph3D()(container)
       c1.lerp(c2, 0.5);
       const w = link.weight || 1;
       const opacity = 0.1 + Math.min(w / 8, 1) * 0.7;
-      link.__customMat = new THREE.LineBasicMaterial({ color: c1, transparent: true, opacity, depthWrite: false });
+      link.__customMat = new THREE.LineBasicMaterial({
+        color: c1,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
     }
     return link.__customMat;
   })
