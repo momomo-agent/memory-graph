@@ -1087,10 +1087,13 @@ setTimeout(() => {
   let bloomDebug = false;
   window.addEventListener('keydown', e => {
     if (e.code === 'KeyB') bloomDebug = !bloomDebug;
+    if (e.code === 'KeyP') alert('bloomHookRan=' + (window.__bloomHookRan || 0));
   });
 
   Graph.postProcessingComposer({
     render() {
+      // DEBUG: show that postprocessing hook is running
+      window.__bloomHookRan = (window.__bloomHookRan || 0) + 1;
       // Update bloom masks every frame (nodes might not be ready at init)
       nodes.forEach(n => { if (n.__sphere) markBloom(n.__sphere, !!n.__active); });
       links.forEach(l => {
@@ -1110,8 +1113,11 @@ setTimeout(() => {
       // Final pass
       camera.layers.set(0);
       if (bloomDebug) {
-        // Show bloom only (still through finalComposer so it hits the canvas)
-        renderer.setClearColor(0x000000, 1);
+        // Bloom-only debug: render bloom RT to screen (should be obvious)
+        bloomComposer.renderToScreen = true;
+        bloomComposer.render();
+        bloomComposer.renderToScreen = false;
+        return;
       }
       finalComposer.render();
     }
