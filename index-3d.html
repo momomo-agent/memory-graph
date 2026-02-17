@@ -1035,9 +1035,9 @@ setTimeout(() => {
   const renderPass = new THREE.RenderPass(scene, camera);
   const bloomPass = new THREE.UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    3.5,  // strength (更炸裂)
-    0.9,  // radius
-    0.05  // threshold
+    6.0,  // strength (更更炸裂)
+    1.2,  // radius
+    0.0   // threshold
   );
 
   const bloomComposer = new THREE.EffectComposer(renderer);
@@ -1049,11 +1049,11 @@ setTimeout(() => {
   finalComposer.addPass(renderPass);
 
   // Add bloom result on top (additive) via a fullscreen quad
-  const bloomStrength = 2.2; // extra boost on top of UnrealBloomPass
+  const bloomStrength = 5.0; // extra boost on top of UnrealBloomPass
   const mixPass = new THREE.ShaderPass({
     uniforms: {
       baseTexture: { value: null },
-      bloomTexture: { value: bloomComposer.renderTarget2.texture },
+      bloomTexture: { value: bloomComposer.renderTarget1.texture },
       strength: { value: bloomStrength }
     },
     vertexShader: `
