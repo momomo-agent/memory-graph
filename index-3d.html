@@ -6,6 +6,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Momo Memory Graph — 3D</title>
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/shaders/FXAAShader.js"></script>
 <script src="https://unpkg.com/three-spritetext@1.8.2/dist/three-spritetext.min.js"></script>
 <script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
 <style>
@@ -983,17 +989,98 @@ setTimeout(() => {
 Graph.cameraPosition({ x: 0, y: 150, z: 600 });
 // No zoomToFit — we stay inside the graph like a game
 
-// === LIGHTING ===
+// === LIGHTING + BLOOM (selective) ===
+const BLOOM_LAYER = 1;
+const bloomLayer = new THREE.Layers();
+bloomLayer.set(BLOOM_LAYER);
+const darkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const materials = {};
+
+function markBloom(obj, enable) {
+  if (!obj) return;
+  if (enable) obj.layers.enable(BLOOM_LAYER);
+  else obj.layers.disable(BLOOM_LAYER);
+}
+
 setTimeout(() => {
   const scene = Graph.scene();
   scene.add(new THREE.AmbientLight(0x444466, 1.5));
-  const pl1 = new THREE.PointLight(0x6666ff, 0.8, 500);
+  const pl1 = new THREE.PointLight(0x6666ff, 1.2, 650);
   pl1.position.set(100, 100, 100);
   scene.add(pl1);
-  const pl2 = new THREE.PointLight(0xff6644, 0.5, 500);
+  const pl2 = new THREE.PointLight(0xff6644, 0.8, 650);
   pl2.position.set(-100, -50, -100);
   scene.add(pl2);
-}, 100);
+
+  // Mark today's active nodes for bloom
+  nodes.forEach(n => {
+    if (n.__sphere) markBloom(n.__sphere, !!n.__active);
+  });
+
+  // Postprocessing pipeline
+  const renderer = Graph.renderer();
+  const camera = Graph.camera();
+
+  const renderPass = new THREE.RenderPass(scene, camera);
+  const bloomPass = new THREE.UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    2.0,  // strength (炸裂)
+    0.6,  // radius
+    0.15  // threshold
+  );
+
+  const bloomComposer = new THREE.EffectComposer(renderer);
+  bloomComposer.renderToScreen = false;
+  bloomComposer.addPass(renderPass);
+  bloomComposer.addPass(bloomPass);
+
+  const finalComposer = new THREE.EffectComposer(renderer);
+  finalComposer.addPass(renderPass);
+
+  // Copy bloom texture additively on top
+  const copyPass = new THREE.ShaderPass(THREE.CopyShader);
+  copyPass.uniforms.opacity.value = 1.0;
+  copyPass.needsSwap = true;
+  finalComposer.addPass(copyPass);
+
+  // FXAA for the final output (helps bloom edges)
+  const fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
+  fxaaPass.material.uniforms['resolution'].value.x = 1 / (window.innerWidth * renderer.getPixelRatio());
+  fxaaPass.material.uniforms['resolution'].value.y = 1 / (window.innerHeight * renderer.getPixelRatio());
+  finalComposer.addPass(fxaaPass);
+
+  // Override render loop to do selective bloom + final compose
+  Graph.postProcessingComposer(null);
+
+  function darkenNonBloom(obj) {
+    if (obj.isMesh && bloomLayer.test(obj.layers) === false) {
+      materials[obj.uuid] = obj.material;
+      obj.material = darkMaterial;
+    }
+  }
+  function restoreMaterial(obj) {
+    if (materials[obj.uuid]) {
+      obj.material = materials[obj.uuid];
+      delete materials[obj.uuid];
+    }
+  }
+
+  const oldAnimate = animate;
+  animate = function(time) {
+    requestAnimationFrame(animate);
+    oldAnimate(time);
+
+    // Render bloom only
+    camera.layers.set(BLOOM_LAYER);
+    scene.traverse(darkenNonBloom);
+    bloomComposer.render();
+    scene.traverse(restoreMaterial);
+
+    // Render full scene
+    camera.layers.set(0);
+    finalComposer.render();
+  };
+}, 120);
 
 // === PARTICLE FLOW (strong links w >= 5) ===
 const particleMeshes = [];
