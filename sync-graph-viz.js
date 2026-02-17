@@ -6,8 +6,17 @@ const fs = require('fs');
 const path = require('path');
 
 const GRAPH = path.join('/Users/kenefe/clawd/memory/graph.json');
+const CHANGELOG = path.join('/Users/kenefe/clawd/memory/graph-changelog.jsonl');
 const OUT = path.join(__dirname, 'graph-data.js');
 
 const graph = JSON.parse(fs.readFileSync(GRAPH, 'utf8'));
-fs.writeFileSync(OUT, 'const graphData = ' + JSON.stringify(graph) + ';\n');
-console.log(`✅ Synced graph-data.js: ${Object.keys(graph.nodes).length} nodes, ${graph.edges.length} edges`);
+
+// Sync changelog (last 50 entries)
+let changelog = [];
+if (fs.existsSync(CHANGELOG)) {
+  const lines = fs.readFileSync(CHANGELOG, 'utf8').trim().split('\n').filter(Boolean);
+  changelog = lines.slice(-50).map(l => { try { return JSON.parse(l); } catch(e) { return null; } }).filter(Boolean);
+}
+
+fs.writeFileSync(OUT, 'const graphData = ' + JSON.stringify(graph) + ';\nconst graphChangelog = ' + JSON.stringify(changelog) + ';\n');
+console.log(`✅ Synced graph-data.js: ${Object.keys(graph.nodes).length} nodes, ${graph.edges.length} edges, ${changelog.length} changelog entries`);

@@ -69,9 +69,23 @@ svg { display: block; }
   color: #777; font-size: 11px; text-align: right;
 }
 #controls {
-  position: fixed; bottom: 16px; right: 16px; z-index: 10;
-  color: #777; font-size: 11px; text-align: right; line-height: 1.8;
+  display: none;
 }
+#changelog {
+  position: fixed; bottom: 16px; right: 16px; z-index: 10;
+  width: 280px; max-height: 300px; overflow-y: auto;
+  background: rgba(15,15,15,0.85); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px; padding: 10px 12px; color: #aaa; font-size: 11px;
+  backdrop-filter: blur(12px); line-height: 1.6;
+}
+#changelog::-webkit-scrollbar { width: 4px; }
+#changelog::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+#changelog .cl-title { color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+#changelog .cl-entry { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+#changelog .cl-time { color: #555; font-size: 10px; }
+#changelog .cl-node { color: #6C5CE7; }
+#changelog .cl-edge { color: #00D2D3; }
+#changelog .cl-weight { color: #F39C12; }
 #controls kbd {
   background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
   border-radius: 3px; padding: 1px 5px; font-family: inherit; font-size: 10px;
@@ -90,6 +104,7 @@ svg { display: block; }
   滚轮缩放 · 拖拽节点
 </div>
 <svg id="graph"></svg>
+<div id="changelog"></div>
 
 <script src="graph-data.js"></script>
 <script>
@@ -687,6 +702,22 @@ function navTick() {
   requestAnimationFrame(navTick);
 }
 requestAnimationFrame(navTick);
+
+// === CHANGELOG ===
+if (typeof graphChangelog !== 'undefined' && graphChangelog.length) {
+  const el = document.getElementById('changelog');
+  let html = '<div class="cl-title">变化记录</div>';
+  graphChangelog.slice().reverse().forEach(e => {
+    const t = new Date(e.ts);
+    const time = `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+    let parts = [];
+    if (e.nodes?.length) parts.push(e.nodes.map(n => `<span class="cl-node">+${n}</span>`).join(' '));
+    if (e.edges?.length) parts.push(e.edges.map(x => `<span class="cl-edge">${x}</span>`).join(' '));
+    if (e.weights?.length) parts.push(e.weights.map(w => `<span class="cl-weight">${w.edge} ${w.from.toFixed(2)}→${w.to.toFixed(2)}</span>`).join(' '));
+    if (parts.length) html += `<div class="cl-entry"><span class="cl-time">${time}</span> ${parts.join(' ')}</div>`;
+  });
+  el.innerHTML = html;
+}
 </script>
 </body>
 </html>
