@@ -303,14 +303,14 @@ const Graph = ForceGraph3D()(container)
       const c2 = new THREE.Color(getColor(tgtId));
       c1.lerp(c2, 0.5);
       const w = link.weight || 1;
-      const opacity = 0.15 + Math.min(w / 8, 1) * 0.65;
+      const opacity = 0.1 + Math.min(w / 8, 1) * 0.7;
       link.__customMat = new THREE.LineBasicMaterial({ color: c1, transparent: true, opacity, depthWrite: false });
     }
     return link.__customMat;
   })
   .linkWidth(link => {
     const w = link.weight || 1;
-    return 0.15 + Math.min(w / 10, 1) * 1.2;
+    return 0.15 + Math.min(w / 8, 1) * 1.35;
   })
   // Force layout tuning
   .d3AlphaDecay(0.02)
@@ -968,7 +968,7 @@ setTimeout(() => {
 
 // === INITIAL CAMERA ===
 // Start inside the graph, not far away
-Graph.cameraPosition({ x: 0, y: 60, z: 200 });
+Graph.cameraPosition({ x: 0, y: 100, z: 400 });
 // No zoomToFit — we stay inside the graph like a game
 
 // === LIGHTING ===
