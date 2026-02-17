@@ -94,7 +94,8 @@ svg { display: block; }
   max-height: 300px; padding: 0 14px 10px; overflow-y: auto;
 }
 @media (max-width: 600px) {
-  #changelog { width: calc(100vw - 32px); left: 16px; right: auto; bottom: auto; top: 60px; font-size: 10px; }
+  #changelog { width: auto; max-width: 45vw; right: 12px; bottom: 12px; font-size: 10px; }
+  #changelog.open { max-width: calc(100vw - 32px); width: calc(100vw - 32px); }
   #changelog.open .cl-body { max-height: 200px; }
 }
 #changelog::-webkit-scrollbar { width: 4px; }
