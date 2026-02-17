@@ -76,7 +76,10 @@ svg { display: block; }
   width: 280px; max-height: 300px; overflow-y: auto;
   background: rgba(15,15,15,0.85); border: 1px solid rgba(255,255,255,0.1);
   border-radius: 10px; padding: 10px 12px; color: #aaa; font-size: 11px;
-  backdrop-filter: blur(12px); line-height: 1.6;
+  backdrop-filter: blur(12px); line-height: 1.6; display: none;
+}
+@media (max-width: 600px) {
+  #changelog { width: calc(100vw - 32px); right: 16px; bottom: 12px; max-height: 200px; font-size: 10px; }
 }
 #changelog::-webkit-scrollbar { width: 4px; }
 #changelog::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
@@ -716,7 +719,10 @@ if (typeof graphChangelog !== 'undefined' && graphChangelog.length) {
     if (e.weights?.length) parts.push(e.weights.map(w => `<span class="cl-weight">${w.edge} ${w.from.toFixed(2)}→${w.to.toFixed(2)}</span>`).join(' '));
     if (parts.length) html += `<div class="cl-entry"><span class="cl-time">${time}</span> ${parts.join(' ')}</div>`;
   });
-  el.innerHTML = html;
+  if (html !== '<div class="cl-title">变化记录</div>') {
+    el.innerHTML = html;
+    el.style.display = 'block';
+  }
 }
 </script>
 </body>
