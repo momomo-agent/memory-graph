@@ -1057,13 +1057,18 @@ window.addEventListener('keyup', e => keysDown.delete(e.code));
 window.addEventListener('mousedown', () => { isDragging = true; });
 window.addEventListener('mouseup', () => { isDragging = false; });
 
+// Block OrbitControls dolly — capture phase on the renderer's canvas
+setTimeout(() => {
+  const canvas = document.querySelector('#graph-container canvas');
+  if (canvas) canvas.addEventListener('wheel', e => e.stopPropagation(), { capture: true });
+}, 200);
+
 // Scroll/trackpad = fly through the graph
 // Two-finger drag (deltaX/deltaY without ctrlKey) = strafe + forward/back
 // Pinch zoom (ctrlKey + deltaY) = forward/back
 window.addEventListener('wheel', e => {
   if (e.target.tagName === 'INPUT') return;
   e.preventDefault();
-  e.stopImmediatePropagation();
   const cam = Graph.camera();
   const controls = Graph.controls();
   cam.updateMatrixWorld();
