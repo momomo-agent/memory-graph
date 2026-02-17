@@ -196,10 +196,11 @@ const defs = svg.append("defs");
 });
 
 // Active node glow filter (electric pulse)
-const af = defs.append("filter").attr("id", "activeGlow").attr("x", "-100%").attr("y", "-100%").attr("width", "300%").attr("height", "300%");
-af.append("feGaussianBlur").attr("in", "SourceGraphic").attr("stdDeviation", "4").attr("result", "blur");
-af.append("feColorMatrix").attr("in", "blur").attr("type", "saturate").attr("values", "3").attr("result", "bright");
+const af = defs.append("filter").attr("id", "activeGlow").attr("x", "-150%").attr("y", "-150%").attr("width", "400%").attr("height", "400%");
+af.append("feGaussianBlur").attr("in", "SourceGraphic").attr("stdDeviation", "8").attr("result", "blur");
+af.append("feColorMatrix").attr("in", "blur").attr("type", "saturate").attr("values", "4").attr("result", "bright");
 const am = af.append("feMerge");
+am.append("feMergeNode").attr("in", "bright");
 am.append("feMergeNode").attr("in", "bright");
 am.append("feMergeNode").attr("in", "SourceGraphic");
 
@@ -300,16 +301,18 @@ const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
 function breatheNodes() {
   const t = Date.now() / 1000;
   const pulse = Math.sin(t * 2) * 0.5 + 0.5; // 0-1
-  // Active nodes: pulsing glow opacity
+  // Active nodes: stronger pulsing glow
   nodeEls.filter(d => _activeNodes.has(d.id))
-    .attr("fill-opacity", 0.7 + pulse * 0.3);
-  // Active edges: pulsing opacity
+    .attr("fill-opacity", 0.5 + pulse * 0.5)
+    .style("filter", `url(#activeGlow) brightness(${1 + pulse * 0.8})`);
+  // Active edges: stronger pulsing
   linkEls.filter(d => {
     const key = (d.source.id || d.source) + '→' + (d.target.id || d.target);
     const keyR = (d.target.id || d.target) + '→' + (d.source.id || d.source);
     return _activeEdges.has(key) || _activeEdges.has(keyR);
-  }).attr("stroke-opacity", 0.4 + pulse * 0.6)
-    .style("filter", pulse > 0.5 ? "url(#glow1)" : "none");
+  }).attr("stroke-opacity", 0.3 + pulse * 0.7)
+    .attr("stroke-width", d => wScale(d.weight) * (1 + pulse * 0.5))
+    .style("filter", "url(#glow1)");
   requestAnimationFrame(breatheNodes);
 }
 if (_activeNodes.size > 0) requestAnimationFrame(breatheNodes);
