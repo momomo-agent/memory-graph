@@ -276,13 +276,30 @@ const linkEls = linkG.selectAll("path").data(links).join("path")
   .attr("fill", "none")
   .style("filter", d => (d.weight || 1) >= 8 ? "url(#glow1)" : "none");
 
+// Today's active set
+const _activeNodes = new Set((typeof todayActive !== 'undefined' ? todayActive.nodes : []));
+const _activeEdges = new Set((typeof todayActive !== 'undefined' ? todayActive.edges : []));
+
 const nodeEls = nodeG.selectAll("circle").data(nodes, d => d.id).join("circle")
   .attr("r", d => rScale(degree[d.id] || 1))
   .attr("fill", d => `url(#ng-${d.id.replace(/[^a-zA-Z0-9-]/g, '_')})`)
-  .attr("stroke", "none")
+  .attr("stroke", d => _activeNodes.has(d.id) ? getColor(d.id) : "none")
+  .attr("stroke-width", d => _activeNodes.has(d.id) ? 1.5 : 0)
   .attr("fill-opacity", d => 0.9 + Math.min((degree[d.id]||1) / maxDeg, 1) * 0.1)
   .style("filter", "none")
   .style("cursor", "grab");
+
+// Breathing animation for today's active nodes
+function breatheNodes() {
+  const t = Date.now() / 1000;
+  nodeEls.filter(d => _activeNodes.has(d.id))
+    .attr("stroke-opacity", Math.sin(t * 1.5) * 0.3 + 0.7)
+    .attr("stroke-width", Math.sin(t * 1.5) * 0.5 + 1.5);
+  linkEls.filter(d => _activeEdges.has(d.source.id + '→' + d.target.id) || _activeEdges.has(d.target.id + '→' + d.source.id))
+    .attr("stroke-opacity", Math.sin(t * 1.5) * 0.2 + 0.7);
+  requestAnimationFrame(breatheNodes);
+}
+if (_activeNodes.size > 0) requestAnimationFrame(breatheNodes);
 
 const labelEls = labelG.selectAll("text").data(nodes, d => d.id).join("text")
   .text(d => d.id)

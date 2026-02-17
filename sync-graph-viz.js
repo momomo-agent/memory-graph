@@ -18,5 +18,26 @@ if (fs.existsSync(CHANGELOG)) {
   changelog = lines.slice(-50).map(l => { try { return JSON.parse(l); } catch(e) { return null; } }).filter(Boolean);
 }
 
-fs.writeFileSync(OUT, 'const graphData = ' + JSON.stringify(graph) + ';\nconst graphChangelog = ' + JSON.stringify(changelog) + ';\n');
+// Extract today's activated nodes/edges from changelog
+const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+const todayISO = todayStart.toISOString();
+const activeNodes = new Set();
+const activeEdges = new Set();
+for (const entry of changelog) {
+  if (entry.ts >= todayISO) {
+    (entry.nodes || []).forEach(n => activeNodes.add(n));
+    (entry.edges || []).forEach(e => activeEdges.add(e));
+  }
+}
+
+fs.writeFileSync(OUT, 'const graphData = ' + JSON.stringify(graph) + ';\nconst graphChangelog = ' + JSON.stringify(changelog) + ';\nconst todayActive = ' + JSON.stringify({ nodes: [...activeNodes], edges: [...activeEdges] }) + ';\n');
 console.log(`✅ Synced graph-data.js: ${Object.keys(graph.nodes).length} nodes, ${graph.edges.length} edges, ${changelog.length} changelog entries`);
+
+// Auto git push (best-effort, non-blocking)
+const { execSync } = require('child_process');
+try {
+  execSync('git add graph-data.js && git diff --cached --quiet || git commit -m "auto-sync graph" && git push', { cwd: __dirname, timeout: 15000, stdio: 'pipe' });
+  console.log('✅ Pushed to GitHub');
+} catch(e) {
+  console.log('⚠️ Git push skipped:', e.message?.split('\n')[0]);
+}
