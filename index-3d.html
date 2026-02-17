@@ -1102,19 +1102,35 @@ setTimeout(() => {
   }
 
   const oldAnimate = animate;
+  let bloomDebug = false;
+  window.addEventListener('keydown', e => {
+    if (e.code === 'KeyB') bloomDebug = !bloomDebug;
+  });
+
   animate = function(time) {
     requestAnimationFrame(animate);
+
+    // Run the original per-frame updates (NO rAF inside)
     oldAnimate(time);
 
-    // Render bloom only
+    // Render bloom only to its RT
     camera.layers.set(BLOOM_LAYER);
     scene.traverse(darkenNonBloom);
     bloomComposer.render();
     scene.traverse(restoreMaterial);
 
-    // Render full scene
+    // Render final
     camera.layers.set(0);
-    finalComposer.render();
+    if (bloomDebug) {
+      // Show only bloom (helps verify pipeline)
+      renderer.setClearColor(0x000000, 1);
+      renderer.clear();
+      renderer.render(scene, camera);
+      // Then draw bloom RT additively via the composer
+      finalComposer.render();
+    } else {
+      finalComposer.render();
+    }
   };
 }, 120);
 
@@ -1143,7 +1159,7 @@ setTimeout(() => {
 
 // === ANIMATION LOOP (breathing + particles) ===
 function animate(time) {
-  requestAnimationFrame(animate);
+  // NOTE: rAF is managed by the bloom wrapper when enabled.
   const t = time * 0.001;
 
   // Glow animation — active nodes + active links pulse like electric current
