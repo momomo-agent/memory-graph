@@ -1189,6 +1189,7 @@ function animate(time) {
         link.__customMat.opacity = active ? Math.min(1, 0.35 + pulse * 0.65) : base;
       });
     }
+  } // end if (!spreadActive)
 
   // Particle flow along strong edges
   particleMeshes.forEach(p => {
