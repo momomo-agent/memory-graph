@@ -427,11 +427,13 @@ Graph.d3Force('cluster', alpha => {
 });
 
 // === HIGHLIGHT (hover only, when spread not active) ===
+let _hoverActCache = null;
 function updateHighlight() {
   if (spreadActive) return;
   const focusNode = hoveredNode;
 
   if (!focusNode) {
+    _hoverActCache = null;
     // No hover — restore all to default
     nodes.forEach(node => {
       if (!node.__sphere) return;
@@ -450,6 +452,7 @@ function updateHighlight() {
   const act = spreadActivation(focusNode.id);
   const maxAct = Math.max(...Object.values(act));
   const actSet = new Set(Object.keys(act));
+  _hoverActCache = actSet;
 
   nodes.forEach(node => {
     if (!node.__sphere) return;
@@ -1158,10 +1161,13 @@ function animate(time) {
   if (!spreadActive) {
     const pulse = Math.sin(t * 2) * 0.5 + 0.5;
 
-    // Active nodes
+    // Active nodes (skip if hover is dimming them)
+    const hoverAct = hoveredNode ? _hoverActCache : null;
     nodes.forEach(node => {
       if (!node.__sphere) return;
       if (node.__active) {
+        // If hovering and this active node is NOT in hover's activation set, let hover dim it
+        if (hoverAct && !hoverAct.has(node.id) && node.id !== hoveredNode.id) return;
         node.__sphere.material.emissiveIntensity = 0.3 + pulse * 1.2;
         node.__sphere.material.opacity = 0.6 + pulse * 0.4;
         const s = 1 + pulse * 0.06;
@@ -1169,19 +1175,20 @@ function animate(time) {
       }
     });
 
-    // Active links (today)
-    links.forEach(link => {
-      const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-      const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-      const key = srcId + '→' + tgtId;
-      const keyR = tgtId + '→' + srcId;
-      const active = _activeEdges3d.has(key) || _activeEdges3d.has(keyR);
-      if (!link.__customMat) return;
-      const w = link.weight || 1;
-      const base = 0.1 + Math.min(w / 8, 1) * 0.7;
-      link.__customMat.opacity = active ? Math.min(1, 0.35 + pulse * 0.65) : base;
-    });
-  }
+    // Active links (today) — skip if hover is active
+    if (!hoveredNode) {
+      links.forEach(link => {
+        const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+        const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+        const key = srcId + '→' + tgtId;
+        const keyR = tgtId + '→' + srcId;
+        const active = _activeEdges3d.has(key) || _activeEdges3d.has(keyR);
+        if (!link.__customMat) return;
+        const w = link.weight || 1;
+        const base = 0.1 + Math.min(w / 8, 1) * 0.7;
+        link.__customMat.opacity = active ? Math.min(1, 0.35 + pulse * 0.65) : base;
+      });
+    }
 
   // Particle flow along strong edges
   particleMeshes.forEach(p => {
