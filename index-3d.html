@@ -476,9 +476,13 @@ function updateHighlight() {
     if (!link.__lineObj) return;
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-    if (actSet.has(srcId) && actSet.has(tgtId)) {
+    const srcIn = actSet.has(srcId), tgtIn = actSet.has(tgtId);
+    if (srcIn && tgtIn) {
       const e = Math.min((act[srcId] || 0), (act[tgtId] || 0)) / maxAct;
-      link.__lineObj.material.opacity = 0.2 + e * 0.6;
+      link.__lineObj.material.opacity = 0.3 + e * 0.5;
+    } else if (srcIn || tgtIn) {
+      const e = (act[srcId] || act[tgtId] || 0) / maxAct;
+      link.__lineObj.material.opacity = 0.15 + e * 0.3;
     } else {
       link.__lineObj.material.opacity = 0.05;
     }
