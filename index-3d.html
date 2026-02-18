@@ -1259,8 +1259,8 @@ function handleWheel(e) {
     controls.target.addScaledVector(camForward, speed);
   } else {
     // Two-finger drag = left/right + up/down (same as WASD)
-    const speedX = -e.deltaX * 0.15;
-    const speedY = e.deltaY * 0.15;
+    const speedX = e.deltaX * 0.15;
+    const speedY = -e.deltaY * 0.15;
     const move = new THREE.Vector3();
     move.addScaledVector(camRight, speedX);
     move.addScaledVector(camUp, speedY);
