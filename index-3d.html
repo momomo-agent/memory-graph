@@ -1054,12 +1054,15 @@ setTimeout(() => {
   const finalComposer = new THREE.EffectComposer(renderer);
   finalComposer.addPass(renderPass);
 
-  // Composite: render full scene, then draw bloom result on top.
-  // We intentionally keep this simple and reliable.
-  const copyPass = new THREE.ShaderPass(THREE.CopyShader);
-  copyPass.uniforms.opacity.value = 1.0;
-  copyPass.needsSwap = true;
-  finalComposer.addPass(copyPass);
+  // Additive blend: overlay bloom result onto the scene
+  const additiveShader = {
+    uniforms: { baseTexture: { value: null }, bloomTexture: { value: bloomComposer.renderTarget2.texture } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform sampler2D baseTexture; uniform sampler2D bloomTexture; varying vec2 vUv; void main() { gl_FragColor = texture2D(baseTexture, vUv) + vec4(1.0) * texture2D(bloomTexture, vUv); }'
+  };
+  const blendPass = new THREE.ShaderPass(new THREE.ShaderMaterial(additiveShader), 'baseTexture');
+  blendPass.needsSwap = true;
+  finalComposer.addPass(blendPass);
 
   // FXAA for the final output (helps bloom edges)
   const fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
