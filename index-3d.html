@@ -1031,16 +1031,16 @@ setTimeout(() => {
     }
   });
 
-  // Postprocessing pipeline
+  /* --- Postprocessing disabled: CDN scripts 404, emissive glow works without bloom ---
   const renderer = Graph.renderer();
   const camera = Graph.camera();
 
   const renderPass = new THREE.RenderPass(scene, camera);
   const bloomPass = new THREE.UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    3.5,  // strength (更炸裂)
-    0.9,  // radius
-    0.05  // threshold
+    3.5,
+    0.9,
+    0.05
   );
 
   const bloomComposer = new THREE.EffectComposer(renderer);
@@ -1119,6 +1119,7 @@ setTimeout(() => {
     camera.layers.set(0);
     finalComposer.render();
   };
+  --- end postprocessing disabled */
 }, 120);
 
 // === PARTICLE FLOW (strong links w >= 5) ===
