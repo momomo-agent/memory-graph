@@ -1054,30 +1054,38 @@ setTimeout(() => {
   const finalComposer = new THREE.EffectComposer(renderer);
   finalComposer.addPass(renderPass);
 
-  // Additive blend: overlay bloom result onto the scene
-  const additiveShader = {
-    uniforms: { baseTexture: { value: null }, bloomTexture: { value: bloomComposer.renderTarget2.texture } },
-    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'uniform sampler2D baseTexture; uniform sampler2D bloomTexture; varying vec2 vUv; void main() { gl_FragColor = texture2D(baseTexture, vUv) + vec4(1.0) * texture2D(bloomTexture, vUv); }'
-  };
-  const blendPass = new THREE.ShaderPass(new THREE.ShaderMaterial(additiveShader), 'baseTexture');
-  blendPass.needsSwap = true;
-  finalComposer.addPass(blendPass);
+  // Add bloom result on top (additive) — v3.0 proven approach
+  const bloomStrength = 2.2;
+  const mixPass = new THREE.ShaderPass({
+    uniforms: {
+      baseTexture: { value: null },
+      bloomTexture: { value: bloomComposer.renderTarget2.texture },
+      strength: { value: bloomStrength }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+    `,
+    fragmentShader: `
+      uniform sampler2D baseTexture;
+      uniform sampler2D bloomTexture;
+      uniform float strength;
+      varying vec2 vUv;
+      void main() { gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv) * strength; }
+    `
+  }, 'baseTexture');
+  finalComposer.addPass(mixPass);
 
-  // FXAA for the final output (helps bloom edges)
+  // FXAA for the final output
   const fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
   fxaaPass.material.uniforms['resolution'].value.x = 1 / (window.innerWidth * renderer.getPixelRatio());
   fxaaPass.material.uniforms['resolution'].value.y = 1 / (window.innerHeight * renderer.getPixelRatio());
   finalComposer.addPass(fxaaPass);
 
-  // Let ForceGraph keep running its internal render loop; we only attach composers for it to use.
-  // (If we null this, the library keeps rendering without our postprocessing.)
-  // We'll pass our composer to ForceGraph.
-  // Graph.postProcessingComposer(null);
+  // v3.0 approach: disable library rendering, take over animate loop
+  Graph.postProcessingComposer(null);
 
   function darkenNonBloom(obj) {
-    // Darken everything not in bloom layer.
-    // Handle BOTH Mesh and Line (current is a Line).
     if ((obj.isMesh || obj.isLine) && bloomLayer.test(obj.layers) === false) {
       materials[obj.uuid] = obj.material;
       obj.material = darkMaterial;
@@ -1090,47 +1098,32 @@ setTimeout(() => {
     }
   }
 
-  // Use ForceGraph's postProcessingComposer hook.
-  // We keep a separate bloomComposer for the bloom pass, and a finalComposer for the final output.
-  // ForceGraph will call finalComposer.render() every frame.
-  let bloomDebug = false;
-  window.addEventListener('keydown', e => {
-    if (e.code === 'KeyB') bloomDebug = !bloomDebug;
-    if (e.code === 'KeyP') alert('bloomHookRan=' + (window.__bloomHookRan || 0));
-  });
+  // Take over render: bloom pass + final composite every frame
+  const oldAnimate = animate;
+  animate = function(time) {
+    requestAnimationFrame(animate);
+    oldAnimate(time);
 
-  Graph.postProcessingComposer({
-    render() {
-      // DEBUG: show that postprocessing hook is running
-      window.__bloomHookRan = (window.__bloomHookRan || 0) + 1;
-      // Update bloom masks every frame (nodes might not be ready at init)
-      nodes.forEach(n => { if (n.__sphere) markBloom(n.__sphere, !!n.__active); });
-      links.forEach(l => {
-        const srcId = typeof l.source === 'object' ? l.source.id : l.source;
-        const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
-        const key = srcId + '→' + tgtId;
-        const keyR = tgtId + '→' + srcId;
-        if ((_activeEdges3d.has(key) || _activeEdges3d.has(keyR)) && l.__lineObj) markBloom(l.__lineObj, true);
-      });
+    // Update bloom masks
+    nodes.forEach(n => { if (n.__sphere) markBloom(n.__sphere, !!n.__active); });
+    links.forEach(l => {
+      const srcId = typeof l.source === 'object' ? l.source.id : l.source;
+      const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
+      const key = srcId + '→' + tgtId;
+      const keyR = tgtId + '→' + srcId;
+      if ((_activeEdges3d.has(key) || _activeEdges3d.has(keyR)) && l.__lineObj) markBloom(l.__lineObj, true);
+    });
 
-      // Bloom pass
-      camera.layers.set(BLOOM_LAYER);
-      scene.traverse(darkenNonBloom);
-      bloomComposer.render();
-      scene.traverse(restoreMaterial);
+    // Bloom pass
+    camera.layers.set(BLOOM_LAYER);
+    scene.traverse(darkenNonBloom);
+    bloomComposer.render();
+    scene.traverse(restoreMaterial);
 
-      // Final pass
-      camera.layers.set(0);
-      if (bloomDebug) {
-        // Bloom-only debug: render bloom RT to screen (should be obvious)
-        bloomComposer.renderToScreen = true;
-        bloomComposer.render();
-        bloomComposer.renderToScreen = false;
-        return;
-      }
-      finalComposer.render();
-    }
-  });
+    // Final pass
+    camera.layers.set(0);
+    finalComposer.render();
+  };
 }, 120);
 
 // === PARTICLE FLOW (strong links w >= 5) ===
@@ -1157,7 +1150,7 @@ setTimeout(() => {
 }, 200);
 
 // === ANIMATION LOOP (breathing + particles) ===
-function animate(time) {
+var animate = function(time) {
   // NOTE: ForceGraph owns the render loop; we only update simulation visuals here.
   const t = time * 0.001;
 
