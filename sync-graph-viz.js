@@ -36,7 +36,7 @@ console.log(`✅ Synced graph-data.js: ${Object.keys(graph.nodes).length} nodes,
 // Auto git push (best-effort, non-blocking)
 const { execSync } = require('child_process');
 try {
-  execSync('git add graph-data.js && git diff --cached --quiet || git commit -m "auto-sync graph" && git push', { cwd: __dirname, timeout: 15000, stdio: 'pipe' });
+  execSync('git checkout main 2>/dev/null; git add graph-data.js && git diff --cached --quiet || (git commit -m "auto-sync graph" && git push)', { cwd: __dirname, timeout: 15000, stdio: 'pipe' });
   console.log('✅ Pushed to GitHub');
 } catch(e) {
   console.log('⚠️ Git push skipped:', e.message?.split('\n')[0]);

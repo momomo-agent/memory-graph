@@ -5,14 +5,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Momo Memory Graph — 3D</title>
-<script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
-<script src="lib/EffectComposer.js"></script>
-<script src="lib/RenderPass.js"></script>
-<script src="lib/ShaderPass.js"></script>
-<script src="lib/CopyShader.js"></script>
-<script src="lib/LuminosityHighPassShader.js"></script>
-<script src="lib/UnrealBloomPass.js"></script>
-<script src="lib/FXAAShader.js"></script>
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/shaders/FXAAShader.js"></script>
 <script src="https://unpkg.com/three-spritetext@1.8.2/dist/three-spritetext.min.js"></script>
 <script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
 <style>
@@ -86,8 +85,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
   position: fixed; bottom: 16px; right: 16px; z-index: 10;
   width: 280px; background: rgba(20,20,20,0.7); border: 1px solid rgba(255,255,255,0.08);
   border-radius: 8px; padding: 0; color: #aaa; font-size: 11px;
-  backdrop-filter: blur(8px); line-height: 1.6; display: none; cursor: pointer;
-  user-select: none;
+  backdrop-filter: blur(8px); line-height: 1.6; display: none; cursor: pointer; user-select: none;
 }
 #changelog .cl-header {
   padding: 8px 14px; display: flex; align-items: center; gap: 6px;
@@ -1042,7 +1040,7 @@ setTimeout(() => {
   const renderPass = new THREE.RenderPass(scene, camera);
   const bloomPass = new THREE.UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    3.5,  // strength
+    3.5,  // strength (更炸裂)
     0.9,  // radius
     0.05  // threshold
   );
@@ -1055,8 +1053,8 @@ setTimeout(() => {
   const finalComposer = new THREE.EffectComposer(renderer);
   finalComposer.addPass(renderPass);
 
-  // Add bloom result on top (additive) — v3.0 proven approach
-  const bloomStrength = 2.2;
+  // Add bloom result on top (additive) via a fullscreen quad
+  const bloomStrength = 2.2; // extra boost on top of UnrealBloomPass
   const mixPass = new THREE.ShaderPass({
     uniforms: {
       baseTexture: { value: null },
@@ -1065,28 +1063,37 @@ setTimeout(() => {
     },
     vertexShader: `
       varying vec2 vUv;
-      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
     `,
     fragmentShader: `
       uniform sampler2D baseTexture;
       uniform sampler2D bloomTexture;
       uniform float strength;
       varying vec2 vUv;
-      void main() { gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv) * strength; }
+      void main() {
+        vec4 base = texture2D(baseTexture, vUv);
+        vec4 bloom = texture2D(bloomTexture, vUv);
+        gl_FragColor = base + bloom * strength;
+      }
     `
   }, 'baseTexture');
   finalComposer.addPass(mixPass);
 
-  // FXAA for the final output
+  // FXAA for the final output (helps bloom edges)
   const fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
   fxaaPass.material.uniforms['resolution'].value.x = 1 / (window.innerWidth * renderer.getPixelRatio());
   fxaaPass.material.uniforms['resolution'].value.y = 1 / (window.innerHeight * renderer.getPixelRatio());
   finalComposer.addPass(fxaaPass);
 
-  // v3.0 approach: disable library rendering, take over animate loop
+  // Override render loop to do selective bloom + final compose
   Graph.postProcessingComposer(null);
 
   function darkenNonBloom(obj) {
+    // Darken everything not in bloom layer.
+    // Handle BOTH Mesh and Line (current is a Line).
     if ((obj.isMesh || obj.isLine) && bloomLayer.test(obj.layers) === false) {
       materials[obj.uuid] = obj.material;
       obj.material = darkMaterial;
@@ -1099,29 +1106,18 @@ setTimeout(() => {
     }
   }
 
-  // Take over render: bloom pass + final composite every frame
   const oldAnimate = animate;
   animate = function(time) {
     requestAnimationFrame(animate);
     oldAnimate(time);
 
-    // Update bloom masks
-    nodes.forEach(n => { if (n.__sphere) markBloom(n.__sphere, !!n.__active); });
-    links.forEach(l => {
-      const srcId = typeof l.source === 'object' ? l.source.id : l.source;
-      const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
-      const key = srcId + '→' + tgtId;
-      const keyR = tgtId + '→' + srcId;
-      if ((_activeEdges3d.has(key) || _activeEdges3d.has(keyR)) && l.__lineObj) markBloom(l.__lineObj, true);
-    });
-
-    // Bloom pass
+    // Render bloom only
     camera.layers.set(BLOOM_LAYER);
     scene.traverse(darkenNonBloom);
     bloomComposer.render();
     scene.traverse(restoreMaterial);
 
-    // Final pass
+    // Render full scene
     camera.layers.set(0);
     finalComposer.render();
   };
@@ -1151,8 +1147,8 @@ setTimeout(() => {
 }, 200);
 
 // === ANIMATION LOOP (breathing + particles) ===
-var animate = function(time) {
-  // NOTE: ForceGraph owns the render loop; we only update simulation visuals here.
+function animate(time) {
+  requestAnimationFrame(animate);
   const t = time * 0.001;
 
   // Glow animation — active nodes + active links pulse like electric current
