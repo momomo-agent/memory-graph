@@ -465,9 +465,9 @@ function updateHighlight() {
       mat.emissiveIntensity = 0.2 + energy * 0.6;
       if (label) label.material.opacity = 0.3 + energy * 0.7;
     } else {
-      mat.opacity = 0.05;
-      mat.emissiveIntensity = 0.02;
-      if (label) label.material.opacity = 0.03;
+      mat.opacity = 0.15;
+      mat.emissiveIntensity = 0.08;
+      if (label) label.material.opacity = 0.1;
     }
   });
 
@@ -480,7 +480,7 @@ function updateHighlight() {
       const e = Math.min((act[srcId] || 0), (act[tgtId] || 0)) / maxAct;
       link.__lineObj.material.opacity = 0.2 + e * 0.6;
     } else {
-      link.__lineObj.material.opacity = 0.01;
+      link.__lineObj.material.opacity = 0.05;
     }
   });
 }
@@ -526,14 +526,14 @@ function triggerSpreadActivation(node) {
   nodes.forEach(n => {
     if (!n.__sphere) return;
     if (litNodes.has(n.id)) return; // already lit, keep bright
-    n.__sphere.material.opacity = 0.03;
-    n.__sphere.material.emissiveIntensity = 0.01;
-    if (n.__label) n.__label.material.opacity = 0.02;
+    n.__sphere.material.opacity = 0.15;
+    n.__sphere.material.emissiveIntensity = 0.08;
+    if (n.__label) n.__label.material.opacity = 0.1;
   });
   const gData = Graph.graphData();
   gData.links.forEach((link, i) => { 
     if (litLinks.has(i)) return; // already lit
-    if (link.__lineObj) link.__lineObj.material.opacity = 0; 
+    if (link.__lineObj) link.__lineObj.material.opacity = 0.05; 
   });
 
   // Light up seed node with glow-in animation
