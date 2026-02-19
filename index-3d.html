@@ -35,15 +35,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
   transition: all 0.2s ease; text-decoration: none; display: inline-block;
 }
 #mode-switch:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.95); }
-#tooltip {
-  position: fixed; pointer-events: none; z-index: 20;
-  background: rgba(20,20,20,0.92); border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 8px; padding: 10px 14px; color: #ddd; font-size: 12px;
-  line-height: 1.6; backdrop-filter: blur(12px); display: none; max-width: 280px;
-}
-#tooltip .tt-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-#tooltip .tt-type { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-#tooltip .tt-meta { color: #999; font-size: 11px; margin-top: 4px; }
+/* tooltip removed */
 #legend {
   position: fixed; bottom: 16px; left: 16px; z-index: 10;
   background: rgba(20,20,20,0.7); border: 1px solid rgba(255,255,255,0.08);
@@ -75,12 +67,6 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 }
 #controls {
   display: none;
-}
-#link-tooltip {
-  position: fixed; pointer-events: none; z-index: 20;
-  background: rgba(20,20,20,0.92); border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 8px; padding: 8px 12px; color: #ddd; font-size: 12px;
-  line-height: 1.5; backdrop-filter: blur(12px); display: none;
 }
 #graph-container { width: 100vw; height: 100vh; }
 #changelog {
@@ -124,11 +110,9 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <body>
 <input id="search" type="text" placeholder="搜索节点..." autocomplete="off" spellcheck="false">
 <a id="mode-switch" href="index-2d.html">切换 2D</a>
-<div id="tooltip"></div>
 <div id="legend"></div>
 <div id="stats"></div>
-<div id="controls">鼠标拖拽旋转 · 滚轮前进后退 · WASD穿梭 · 点击节点扩散 · 点击空白/ESC恢复</div>
-<div id="link-tooltip"></div>
+<div id="controls">鼠标拖拽旋转 · 滚轮前进后退 · WASD穿梭</div>
 <div id="graph-container"></div>
 <div id="changelog"></div>
 
@@ -341,39 +325,10 @@ const Graph = ForceGraph3D()(container)
     container.style.cursor = node ? 'pointer' : 'default';
     hoveredNode = node;
     if (!spreadActive) updateHighlight();
-    if (!node) {
-      document.getElementById('tooltip').style.display = 'none';
-    }
-  })
-  // Link hover tooltip
-  .onLinkHover(link => {
-    const lt = document.getElementById('link-tooltip');
-    if (link) {
-      const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-      const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-      lt.innerHTML = srcId + ' ↔ ' + tgtId + '<br>weight: ' + (link.weight || 1);
-      lt.style.display = 'block';
-    } else {
-      lt.style.display = 'none';
-    }
   })
   // Drag — update cluster auras in real-time
   .onNodeDrag(() => { updateClusterAuras(); })
-  .onNodeDragEnd(() => { updateClusterAuras(); })
-  // Click — spread activation
-  .onNodeClick(node => {
-    if (spreadActive && clickedNode === node) {
-      // Clicking same node again — restore all (animated)
-      restoreAll();
-      return;
-    }
-    // New node — reset previous spread instantly, then start fresh
-    restoreAll(true);
-    clickedNode = node;
-    triggerSpreadActivation(node);
-    showTooltip(node);
-  })
-  .onBackgroundClick(() => { restoreAll(); });
+  .onNodeDragEnd(() => { updateClusterAuras(); });
 
 window._Graph = Graph; // expose for debugging
 
@@ -792,7 +747,7 @@ function restoreAll(instant) {
     })();
   }
   clickedNode = null;
-  document.getElementById('tooltip').style.display = 'none';
+  
 }
 
 function lightNode(nid) {
@@ -853,36 +808,6 @@ function resetSpread() {
 }
 
 // === TOOLTIP ===
-function showTooltip(node) {
-  if (!node) return;
-  const tooltip = document.getElementById('tooltip');
-  const color = getColor(node.id);
-  let html = '<div class="tt-name" style="color:' + color + '">' + node.id + '</div>';
-  html += '<div class="tt-type">' + (node.type || '') + (nodeCluster[node.id] ? ' · ' + clusterLabels[nodeCluster[node.id]] : '') + '</div>';
-  html += '<div class="tt-meta">连接数: ' + (degree[node.id] || 0) + '</div>';
-  if (node.definition) html += '<div class="tt-meta">' + node.definition + '</div>';
-  if (node.status) html += '<div class="tt-meta">状态: ' + node.status + '</div>';
-  if (node.deploy) html += '<div class="tt-meta">🔗 ' + node.deploy + '</div>';
-  tooltip.innerHTML = html;
-  tooltip.style.display = 'block';
-  tooltip.style.left = (window.innerWidth / 2 + 20) + 'px';
-  tooltip.style.top = '60px';
-}
-
-// Track mouse for link tooltip positioning
-container.addEventListener('mousemove', e => {
-  const lt = document.getElementById('link-tooltip');
-  if (lt.style.display === 'block') {
-    lt.style.left = (e.clientX + 14) + 'px';
-    lt.style.top = (e.clientY - 10) + 'px';
-  }
-  const tooltip = document.getElementById('tooltip');
-  if (tooltip.style.display === 'block' && hoveredNode && !spreadActive) {
-    tooltip.style.left = (e.clientX + 14) + 'px';
-    tooltip.style.top = (e.clientY - 10) + 'px';
-  }
-});
-
 // === SEARCH ===
 const searchInput = document.getElementById('search');
 let searchQuery = '';
