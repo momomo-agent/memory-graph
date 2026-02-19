@@ -109,6 +109,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 </head>
 <body>
 <input id="search" type="text" placeholder="搜索节点..." autocomplete="off" spellcheck="false">
+<div id="node-info" style="position:fixed;top:50px;left:12px;background:rgba(0,0,0,0.75);color:#ccc;padding:8px 12px;border-radius:6px;font-size:12px;max-width:280px;display:none;pointer-events:none;z-index:10;line-height:1.5;backdrop-filter:blur(8px)"></div>
 <a id="mode-switch" href="index-2d.html">切换 2D</a>
 <div id="legend"></div>
 <div id="stats"></div>
@@ -264,8 +265,10 @@ const Graph = ForceGraph3D()(container)
     const hitbox = new THREE.Mesh(hitGeo, hitMat);
     group.add(hitbox);
 
-    // Label sprite
-    const sprite = new SpriteText(node.id);
+    // Label sprite — prefer Chinese alias if available
+    const cnAlias = (node.aliases || []).find(a => /[\u4e00-\u9fff]/.test(a));
+    const displayName = cnAlias || node.id;
+    const sprite = new SpriteText(displayName);
     sprite.color = color;
     sprite.textHeight = Math.max(3, Math.min(6, radius * 0.8));
     sprite.position.y = -(radius + 2);
@@ -324,6 +327,17 @@ const Graph = ForceGraph3D()(container)
   .onNodeHover(node => {
     container.style.cursor = node ? 'pointer' : 'default';
     hoveredNode = node;
+    const info = document.getElementById('node-info');
+    if (node) {
+      const aliases = (node.aliases || []).filter(a => a !== node.id);
+      let html = `<b style="color:#fff">${node.id}</b>`;
+      if (aliases.length) html += `<br><span style="color:#aaa">别名: ${aliases.join(' · ')}</span>`;
+      if (node.definition) html += `<br><span style="color:#888">${node.definition.substring(0,80)}</span>`;
+      info.innerHTML = html;
+      info.style.display = 'block';
+    } else {
+      info.style.display = 'none';
+    }
     if (!spreadActive) updateHighlight();
   })
   // Drag — update cluster auras in real-time
@@ -820,7 +834,10 @@ searchInput.addEventListener('input', () => {
     return;
   }
   const matched = new Set();
-  nodes.forEach(n => { if (n.id.toLowerCase().includes(searchQuery)) matched.add(n.id); });
+  nodes.forEach(n => {
+    if (n.id.toLowerCase().includes(searchQuery)) matched.add(n.id);
+    else if ((n.aliases || []).some(a => a.toLowerCase().includes(searchQuery))) matched.add(n.id);
+  });
 
   nodes.forEach(node => {
     if (!node.__sphere) return;
