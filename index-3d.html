@@ -313,7 +313,7 @@ const Graph = ForceGraph3D()(container)
         transparent: true,
         opacity,
         depthWrite: false,
-        blending: THREE.NormalBlending
+        blending: THREE.AdditiveBlending
       });
     }
     return link.__customMat;
