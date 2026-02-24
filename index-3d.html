@@ -35,7 +35,15 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
   transition: all 0.2s ease; text-decoration: none; display: inline-block;
 }
 #mode-switch:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.95); }
-/* tooltip removed */
+#tooltip {
+  position: fixed; pointer-events: none; z-index: 20;
+  background: rgba(20,20,20,0.92); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px; padding: 10px 14px; color: #ddd; font-size: 12px;
+  line-height: 1.6; backdrop-filter: blur(12px); display: none; max-width: 280px;
+}
+#tooltip .tt-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+#tooltip .tt-type { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+#tooltip .tt-meta { color: #999; font-size: 11px; margin-top: 4px; }
 #legend {
   position: fixed; bottom: 16px; left: 16px; z-index: 10;
   background: rgba(20,20,20,0.7); border: 1px solid rgba(255,255,255,0.08);
@@ -67,6 +75,12 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 }
 #controls {
   display: none;
+}
+#link-tooltip {
+  position: fixed; pointer-events: none; z-index: 20;
+  background: rgba(20,20,20,0.92); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px; padding: 8px 12px; color: #ddd; font-size: 12px;
+  line-height: 1.5; backdrop-filter: blur(12px); display: none;
 }
 #graph-container { width: 100vw; height: 100vh; }
 #changelog {
@@ -109,11 +123,12 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 </head>
 <body>
 <input id="search" type="text" placeholder="搜索节点..." autocomplete="off" spellcheck="false">
-<div id="node-info" style="position:fixed;top:50px;left:12px;background:rgba(0,0,0,0.75);color:#ccc;padding:8px 12px;border-radius:6px;font-size:12px;max-width:280px;display:none;pointer-events:none;z-index:10;line-height:1.5;backdrop-filter:blur(8px)"></div>
 <a id="mode-switch" href="index-2d.html">切换 2D</a>
+<div id="tooltip"></div>
 <div id="legend"></div>
 <div id="stats"></div>
-<div id="controls">鼠标拖拽旋转 · 滚轮前进后退 · WASD穿梭</div>
+<div id="controls">鼠标拖拽旋转 · 滚轮前进后退 · WASD穿梭 · 点击节点扩散 · 点击空白/ESC恢复</div>
+<div id="link-tooltip"></div>
 <div id="graph-container"></div>
 <div id="changelog"></div>
 
@@ -265,10 +280,9 @@ const Graph = ForceGraph3D()(container)
     const hitbox = new THREE.Mesh(hitGeo, hitMat);
     group.add(hitbox);
 
-    // Label sprite — prefer English alias
-    const enAlias = (node.aliases || []).find(a => /^[a-zA-Z0-9\s\-_'.,()+\/&:]+$/.test(a) && a !== node.id.replace(/-/g, ' '));
-    const displayName = enAlias || node.id;
-    const sprite = new SpriteText(displayName);
+    // Label sprite
+    const enAlias = (node.aliases || []).find(a => /^[a-zA-Z]/.test(a) && a !== node.id.replace(/-/g, ' '));
+    const sprite = new SpriteText(enAlias || node.id);
     sprite.color = color;
     sprite.textHeight = Math.max(3, Math.min(6, radius * 0.8));
     sprite.position.y = -(radius + 2);
@@ -327,86 +341,40 @@ const Graph = ForceGraph3D()(container)
   .onNodeHover(node => {
     container.style.cursor = node ? 'pointer' : 'default';
     hoveredNode = node;
-    const info = document.getElementById('node-info');
-    if (node) {
-      const aliases = (node.aliases || []).filter(a => a !== node.id);
-      let html = `<b style="color:#fff">${node.id}</b>`;
-      if (aliases.length) html += `<br><span style="color:#aaa">别名: ${aliases.join(' · ')}</span>`;
-      if (node.definition) html += `<br><span style="color:#888">${node.definition.substring(0,80)}</span>`;
-      info.innerHTML = html;
-      info.style.display = 'block';
-    } else {
-      info.style.display = 'none';
-    }
     if (!spreadActive) updateHighlight();
+    if (!node) {
+      document.getElementById('tooltip').style.display = 'none';
+    }
   })
-  // Click — spread activation
-  .onNodeClick(node => {
-    if (!node) return;
-    // Clear previous spread
-    spreadTimeouts.forEach(t => clearTimeout(t));
-    spreadTimeouts = [];
-    litNodes.clear();
-    litLinks.clear();
-
-    if (clickedNode === node) {
-      // Toggle off
-      clickedNode = null;
-      spreadActive = false;
-      updateHighlight();
-      return;
-    }
-
-    clickedNode = node;
-    spreadActive = true;
-    const act = spreadActivation(node.id);
-    const maxAct = Math.max(...Object.values(act));
-
-    // Dim everything first
-    nodes.forEach(n => {
-      if (!n.__sphere) return;
-      n.__sphere.material.opacity = 0.05;
-      n.__sphere.material.emissiveIntensity = 0.05;
-      if (n.__label) n.__label.material.opacity = 0.05;
-    });
-    const gData = Graph.graphData();
-    gData.links.forEach(l => { if (l.__customMat) l.__customMat.opacity = 0.02; });
-
-    // Animate spread wave by depth
-    const byDepth = {};
-    for (const [id, energy] of Object.entries(act)) {
-      const depth = energy >= 0.9 ? 0 : energy >= 0.3 ? 1 : energy >= 0.05 ? 2 : 3;
-      if (!byDepth[depth]) byDepth[depth] = [];
-      byDepth[depth].push({ id, energy });
-    }
-
-    for (const [depth, items] of Object.entries(byDepth)) {
-      const delay = depth * 150;
-      spreadTimeouts.push(setTimeout(() => {
-        for (const { id, energy } of items) {
-          litNodes.add(id);
-          const n = nodes.find(x => x.id === id);
-          if (!n || !n.__sphere) continue;
-          const intensity = Math.max(0.3, energy / maxAct);
-          n.__sphere.material.opacity = 0.3 + intensity * 0.7;
-          n.__sphere.material.emissiveIntensity = 0.3 + intensity * 0.7;
-          if (n.__label) n.__label.material.opacity = 0.3 + intensity * 0.7;
-        }
-        // Light up connected links
-        gData.links.forEach((l, i) => {
-          const sid = typeof l.source === 'object' ? l.source.id : l.source;
-          const tid = typeof l.target === 'object' ? l.target.id : l.target;
-          if (litNodes.has(sid) && litNodes.has(tid)) {
-            litLinks.add(i);
-            if (l.__customMat) l.__customMat.opacity = 0.5;
-          }
-        });
-      }, delay));
+  // Link hover tooltip
+  .onLinkHover(link => {
+    const lt = document.getElementById('link-tooltip');
+    if (link) {
+      const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+      const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+      lt.innerHTML = srcId + ' ↔ ' + tgtId + '<br>weight: ' + (link.weight || 1);
+      lt.style.display = 'block';
+    } else {
+      lt.style.display = 'none';
     }
   })
   // Drag — update cluster auras in real-time
   .onNodeDrag(() => { updateClusterAuras(); })
-  .onNodeDragEnd(() => { updateClusterAuras(); });
+  .onNodeDragEnd(() => { updateClusterAuras(); })
+  // Click — spread activation
+  .onNodeClick(node => {
+    if (spreadActive && clickedNode === node) {
+      // Clicking same node again — restore all (animated)
+      restoreAll();
+      return;
+    }
+    // New node — reset previous spread instantly, then start fresh
+    restoreAll(true);
+    clickedNode = node;
+    triggerSpreadActivation(node);
+    showTooltip(node);
+  })
+  .onBackgroundClick(() => { restoreAll(); });
 
 window._Graph = Graph; // expose for debugging
 
@@ -460,13 +428,11 @@ Graph.d3Force('cluster', alpha => {
 });
 
 // === HIGHLIGHT (hover only, when spread not active) ===
-let _hoverActCache = null;
 function updateHighlight() {
   if (spreadActive) return;
   const focusNode = hoveredNode;
 
   if (!focusNode) {
-    _hoverActCache = null;
     // No hover — restore all to default
     nodes.forEach(node => {
       if (!node.__sphere) return;
@@ -485,7 +451,6 @@ function updateHighlight() {
   const act = spreadActivation(focusNode.id);
   const maxAct = Math.max(...Object.values(act));
   const actSet = new Set(Object.keys(act));
-  _hoverActCache = actSet;
 
   nodes.forEach(node => {
     if (!node.__sphere) return;
@@ -512,13 +477,9 @@ function updateHighlight() {
     if (!link.__lineObj) return;
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-    const srcIn = actSet.has(srcId), tgtIn = actSet.has(tgtId);
-    if (srcIn && tgtIn) {
+    if (actSet.has(srcId) && actSet.has(tgtId)) {
       const e = Math.min((act[srcId] || 0), (act[tgtId] || 0)) / maxAct;
-      link.__lineObj.material.opacity = 0.3 + e * 0.5;
-    } else if (srcIn || tgtIn) {
-      const e = (act[srcId] || act[tgtId] || 0) / maxAct;
-      link.__lineObj.material.opacity = 0.15 + e * 0.3;
+      link.__lineObj.material.opacity = 0.2 + e * 0.6;
     } else {
       link.__lineObj.material.opacity = 0.05;
     }
@@ -825,7 +786,7 @@ function restoreAll(instant) {
     })();
   }
   clickedNode = null;
-  
+  document.getElementById('tooltip').style.display = 'none';
 }
 
 function lightNode(nid) {
@@ -886,6 +847,36 @@ function resetSpread() {
 }
 
 // === TOOLTIP ===
+function showTooltip(node) {
+  if (!node) return;
+  const tooltip = document.getElementById('tooltip');
+  const color = getColor(node.id);
+  let html = '<div class="tt-name" style="color:' + color + '">' + node.id + '</div>';
+  html += '<div class="tt-type">' + (node.type || '') + (nodeCluster[node.id] ? ' · ' + clusterLabels[nodeCluster[node.id]] : '') + '</div>';
+  html += '<div class="tt-meta">连接数: ' + (degree[node.id] || 0) + '</div>';
+  if (node.definition) html += '<div class="tt-meta">' + node.definition + '</div>';
+  if (node.status) html += '<div class="tt-meta">状态: ' + node.status + '</div>';
+  if (node.deploy) html += '<div class="tt-meta">🔗 ' + node.deploy + '</div>';
+  tooltip.innerHTML = html;
+  tooltip.style.display = 'block';
+  tooltip.style.left = (window.innerWidth / 2 + 20) + 'px';
+  tooltip.style.top = '60px';
+}
+
+// Track mouse for link tooltip positioning
+container.addEventListener('mousemove', e => {
+  const lt = document.getElementById('link-tooltip');
+  if (lt.style.display === 'block') {
+    lt.style.left = (e.clientX + 14) + 'px';
+    lt.style.top = (e.clientY - 10) + 'px';
+  }
+  const tooltip = document.getElementById('tooltip');
+  if (tooltip.style.display === 'block' && hoveredNode && !spreadActive) {
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top = (e.clientY - 10) + 'px';
+  }
+});
+
 // === SEARCH ===
 const searchInput = document.getElementById('search');
 let searchQuery = '';
@@ -898,10 +889,7 @@ searchInput.addEventListener('input', () => {
     return;
   }
   const matched = new Set();
-  nodes.forEach(n => {
-    if (n.id.toLowerCase().includes(searchQuery)) matched.add(n.id);
-    else if ((n.aliases || []).some(a => a.toLowerCase().includes(searchQuery))) matched.add(n.id);
-  });
+  nodes.forEach(n => { if (n.id.toLowerCase().includes(searchQuery)) matched.add(n.id); });
 
   nodes.forEach(node => {
     if (!node.__sphere) return;
@@ -1167,13 +1155,10 @@ function animate(time) {
   if (!spreadActive) {
     const pulse = Math.sin(t * 2) * 0.5 + 0.5;
 
-    // Active nodes (skip if hover is dimming them)
-    const hoverAct = hoveredNode ? _hoverActCache : null;
+    // Active nodes
     nodes.forEach(node => {
       if (!node.__sphere) return;
       if (node.__active) {
-        // If hovering and this active node is NOT in hover's activation set, let hover dim it
-        if (hoverAct && !hoverAct.has(node.id) && node.id !== hoveredNode.id) return;
         node.__sphere.material.emissiveIntensity = 0.3 + pulse * 1.2;
         node.__sphere.material.opacity = 0.6 + pulse * 0.4;
         const s = 1 + pulse * 0.06;
@@ -1181,21 +1166,19 @@ function animate(time) {
       }
     });
 
-    // Active links (today) — skip if hover is active
-    if (!hoveredNode) {
-      links.forEach(link => {
-        const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-        const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-        const key = srcId + '→' + tgtId;
-        const keyR = tgtId + '→' + srcId;
-        const active = _activeEdges3d.has(key) || _activeEdges3d.has(keyR);
-        if (!link.__customMat) return;
-        const w = link.weight || 1;
-        const base = 0.1 + Math.min(w / 8, 1) * 0.7;
-        link.__customMat.opacity = active ? Math.min(1, 0.35 + pulse * 0.65) : base;
-      });
-    }
-  } // end if (!spreadActive)
+    // Active links (today)
+    links.forEach(link => {
+      const srcId = typeof link.source === 'object' ? link.source.id : link.source;
+      const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
+      const key = srcId + '→' + tgtId;
+      const keyR = tgtId + '→' + srcId;
+      const active = _activeEdges3d.has(key) || _activeEdges3d.has(keyR);
+      if (!link.__customMat) return;
+      const w = link.weight || 1;
+      const base = 0.1 + Math.min(w / 8, 1) * 0.7;
+      link.__customMat.opacity = active ? Math.min(1, 0.35 + pulse * 0.65) : base;
+    });
+  }
 
   // Particle flow along strong edges
   particleMeshes.forEach(p => {
