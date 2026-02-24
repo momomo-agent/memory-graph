@@ -342,7 +342,9 @@ const Graph = ForceGraph3D()(container)
     container.style.cursor = node ? 'pointer' : 'default';
     hoveredNode = node;
     if (!spreadActive) updateHighlight();
-    if (!node) {
+    if (node) {
+      showTooltip(node);
+    } else {
       document.getElementById('tooltip').style.display = 'none';
     }
   })
@@ -854,24 +856,28 @@ function showTooltip(node) {
   let html = '<div class="tt-name" style="color:' + color + '">' + node.id + '</div>';
   html += '<div class="tt-type">' + (node.type || '') + (nodeCluster[node.id] ? ' · ' + clusterLabels[nodeCluster[node.id]] : '') + '</div>';
   html += '<div class="tt-meta">连接数: ' + (degree[node.id] || 0) + '</div>';
+  if (node.aliases && node.aliases.length) html += '<div class="tt-meta">别名: ' + node.aliases.slice(0,5).join(' · ') + '</div>';
   if (node.definition) html += '<div class="tt-meta">' + node.definition + '</div>';
   if (node.status) html += '<div class="tt-meta">状态: ' + node.status + '</div>';
   if (node.deploy) html += '<div class="tt-meta">🔗 ' + node.deploy + '</div>';
   tooltip.innerHTML = html;
   tooltip.style.display = 'block';
-  tooltip.style.left = (window.innerWidth / 2 + 20) + 'px';
-  tooltip.style.top = '60px';
+  // Position near mouse (updated by mousemove)
+  tooltip.style.left = (_mouseX + 16) + 'px';
+  tooltip.style.top = (_mouseY + 16) + 'px';
 }
 
 // Track mouse for link tooltip positioning
+let _mouseX = 0, _mouseY = 0;
 container.addEventListener('mousemove', e => {
+  _mouseX = e.clientX; _mouseY = e.clientY;
   const lt = document.getElementById('link-tooltip');
   if (lt.style.display === 'block') {
     lt.style.left = (e.clientX + 14) + 'px';
     lt.style.top = (e.clientY - 10) + 'px';
   }
   const tooltip = document.getElementById('tooltip');
-  if (tooltip.style.display === 'block' && hoveredNode && !spreadActive) {
+  if (tooltip.style.display === 'block') {
     tooltip.style.left = (e.clientX + 14) + 'px';
     tooltip.style.top = (e.clientY - 10) + 'px';
   }
