@@ -132,27 +132,15 @@ svg { display: block; }
 // === DATA ===
 // graphData loaded from graph-data.js
 // === COLOR MAP ===
-const clusterColors = {
-  "design-system": "#FF4757",
-  "intera-engine": "#FFC312",
-  "cluster-jotjot": "#0ABDE3",
-  "cluster-memory-system": "#6C5CE7",
-  "bookmark-tools": "#00D2D3",
-  "cluster-openclaw": "#E17055",
-  "cluster-mind-palace": "#F97F51",
-  "ai-native-ui": "#A55EEA",
-  "cluster-agent-memory": "#FF9F1A",
-  "cluster-instinct-mode": "#FF6348",
-  "daily-brief-stack": "#1ABC9C",
-  "cluster-hci": "#F39C12",
-  "molttalk-stack": "#9B59B6",
-  "cluster-webgpu": "#2ED573",
-  "interaction-design": "#E84393",
-  "cluster-synapse": "#FF6B81",
-  "cluster-anthropic-harness": "#00CEC9",
-  "toolchain": "#26DE81",
-  "cluster-figma-plugin": "#A3CB38"
-};
+// Dynamic cluster colors — HSL color wheel, evenly spaced
+const clusterIds = (graphData.clusters || []).map(c => c.id);
+const clusterColors = {};
+clusterIds.forEach((id, i) => {
+  const hue = (i * 360 / Math.max(clusterIds.length, 1) + 15) % 360;
+  const sat = 65 + (i % 3) * 10;
+  const lit = 55 + (i % 2) * 10;
+  clusterColors[id] = `hsl(${hue}, ${sat}%, ${lit}%)`;
+});
 const clusterLabels = {};
 const nodeCluster = {};
 
