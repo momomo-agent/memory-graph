@@ -444,16 +444,17 @@ function updateHighlight() {
     });
     const gData = Graph.graphData();
     gData.links.forEach(link => {
-      if (link.__lineObj) link.__lineObj.material.opacity = 0.4;
+      if (link.__customMat) link.__customMat.opacity = 0.1 + Math.min((link.weight||1)/8,1)*0.7;
     });
     return;
   }
 
-  // Use spread activation for hover too
+  // Use spread activation for hover — same visual as click
   const act = spreadActivation(focusNode.id);
   const maxAct = Math.max(...Object.values(act));
   const actSet = new Set(Object.keys(act));
 
+  // Dim non-activated, light up activated (same as click behavior)
   nodes.forEach(node => {
     if (!node.__sphere) return;
     const mat = node.__sphere.material;
@@ -468,22 +469,22 @@ function updateHighlight() {
       mat.emissiveIntensity = 0.2 + energy * 0.6;
       if (label) label.material.opacity = 0.3 + energy * 0.7;
     } else {
-      mat.opacity = 0.15;
-      mat.emissiveIntensity = 0.08;
-      if (label) label.material.opacity = 0.1;
+      mat.opacity = 0.08;
+      mat.emissiveIntensity = 0.05;
+      if (label) label.material.opacity = 0.05;
     }
   });
 
   const gData = Graph.graphData();
   gData.links.forEach(link => {
-    if (!link.__lineObj) return;
+    if (!link.__customMat) return;
     const srcId = typeof link.source === 'object' ? link.source.id : link.source;
     const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
     if (actSet.has(srcId) && actSet.has(tgtId)) {
       const e = Math.min((act[srcId] || 0), (act[tgtId] || 0)) / maxAct;
-      link.__lineObj.material.opacity = 0.2 + e * 0.6;
+      link.__customMat.opacity = 0.3 + e * 0.7;
     } else {
-      link.__lineObj.material.opacity = 0.05;
+      link.__customMat.opacity = 0.02;
     }
   });
 }
