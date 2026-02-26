@@ -133,15 +133,11 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="changelog"></div>
 
 <script src="graph-data.js"></script>
+<script src="graph-data-emb.js"></script>
 <script>
 // === DATA ===
-// UMAP embedding layout: load pre-computed 3D positions
-let embPositions = null;
-fetch('graph-data-emb.json').then(r => r.json()).then(emb => {
-  embPositions = {};
-  emb.nodes.forEach(n => { embPositions[n.id] = { fx: n.fx, fy: n.fy, fz: n.fz }; });
-  console.log('📍 UMAP positions loaded:', Object.keys(embPositions).length);
-}).catch(() => console.log('⚠️ No UMAP data, using force layout'));
+// embPositions loaded synchronously from graph-data-emb.js
+console.log('📍 UMAP positions:', Object.keys(embPositions || {}).length);
 
 // Dynamic cluster colors — HSL color wheel, evenly spaced
 const clusterIds = (graphData.clusters || []).map(c => c.id);
