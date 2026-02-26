@@ -124,6 +124,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <body>
 <input id="search" type="text" placeholder="搜索节点..." autocomplete="off" spellcheck="false">
 <a id="mode-switch" href="index-2d.html">切换 2D</a>
+<a id="layout-toggle" style="position:fixed;top:12px;left:230px;z-index:100;background:rgba(30,30,30,0.85);color:#aaa;padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);user-select:none;text-decoration:none">语义布局</a>
 <div id="tooltip"></div>
 <div id="legend"></div>
 <div id="stats"></div>
@@ -133,8 +134,11 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="changelog"></div>
 
 <script src="graph-data.js"></script>
+<script src="graph-data-emb.js"></script>
 <script>
 // === DATA ===
+// embPositions loaded from graph-data-emb.js (UMAP 3D coordinates)
+let semanticMode = false;
 // graphData loaded from graph-data.js
 // Dynamic cluster colors — HSL color wheel, evenly spaced
 const clusterIds = (graphData.clusters || []).map(c => c.id);
@@ -307,13 +311,15 @@ const Graph = ForceGraph3D()(container)
       const c2 = new THREE.Color(getColor(tgtId));
       c1.lerp(c2, 0.5);
       const w = link.weight || 1;
-      const opacity = 0.03 + Math.min(w / 10, 1) * 0.25;
+      const opacity = semanticMode 
+        ? (w >= 2.5 ? 0.03 + Math.min(w / 10, 1) * 0.15 : 0)
+        : (0.03 + Math.min(w / 10, 1) * 0.25);
       link.__customMat = new THREE.LineBasicMaterial({
-        color: c1,
+        color: semanticMode ? new THREE.Color('#445566') : c1,
         transparent: true,
         opacity,
         depthWrite: false,
-        blending: THREE.AdditiveBlending
+        blending: semanticMode ? THREE.NormalBlending : THREE.AdditiveBlending
       });
     }
     return link.__customMat;
@@ -367,6 +373,66 @@ const Graph = ForceGraph3D()(container)
   .onBackgroundClick(() => { restoreAll(); });
 
 window._Graph = Graph; // expose for debugging
+
+// === SEMANTIC LAYOUT TOGGLE ===
+const layoutBtn = document.getElementById('layout-toggle');
+let _savedForcePositions = {}; // store force-layout positions before switching
+
+layoutBtn.addEventListener('click', () => {
+  if (!embPositions) { layoutBtn.textContent = '无语义数据'; return; }
+  semanticMode = !semanticMode;
+  layoutBtn.textContent = semanticMode ? '力导向布局' : '语义布局';
+  layoutBtn.style.color = semanticMode ? '#6cf' : '#aaa';
+  // Force link material rebuild
+  Graph.graphData().links.forEach(l => { delete l.__customMat; });
+  
+  if (semanticMode) {
+    // Save current force positions, then animate to UMAP
+    nodes.forEach(n => { _savedForcePositions[n.id] = { x: n.x, y: n.y, z: n.z }; });
+    // Disable forces
+    Graph.d3Force('charge', null);
+    Graph.d3Force('center', null);
+    const lf = Graph.d3Force('link'); if (lf) lf.strength(0);
+    // Animate nodes to UMAP positions
+    animateToPositions(embPositions, 1200, () => {
+      // Zoom camera to fit UMAP spread
+      Graph.cameraPosition({ x: 0, y: 0, z: 1200 }, { x: 0, y: 0, z: 0 }, 800);
+    });
+  } else {
+    // Animate back to saved force positions, then re-enable forces
+    animateToPositions(_savedForcePositions, 1200, () => {
+      // Unpin and reheat
+      nodes.forEach(n => { delete n.fx; delete n.fy; delete n.fz; });
+      Graph.d3ReheatSimulation();
+    });
+  }
+});
+
+function animateToPositions(targetMap, durationMs, onDone) {
+  const starts = {};
+  nodes.forEach(n => { starts[n.id] = { x: n.x || 0, y: n.y || 0, z: n.z || 0 }; });
+  const t0 = performance.now();
+  (function step() {
+    const t = Math.min((performance.now() - t0) / durationMs, 1);
+    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t; // ease in-out quad
+    nodes.forEach(n => {
+      const target = targetMap[n.id];
+      if (!target) return;
+      const s = starts[n.id];
+      const tx = target.fx !== undefined ? target.fx : target.x;
+      const ty = target.fy !== undefined ? target.fy : target.y;
+      const tz = target.fz !== undefined ? target.fz : target.z;
+      n.x = s.x + (tx - s.x) * ease;
+      n.y = s.y + (ty - s.y) * ease;
+      n.z = s.z + (tz - s.z) * ease;
+      if (semanticMode) { n.fx = n.x; n.fy = n.y; n.fz = n.z; }
+    });
+    Graph.graphData().nodes = nodes; // trigger re-render
+    Graph.refresh();
+    if (t < 1) requestAnimationFrame(step);
+    else if (onDone) onDone();
+  })();
+}
 
 // Disable OrbitControls default zoom/pan — we handle it ourselves
 setTimeout(() => {
