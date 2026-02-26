@@ -1012,6 +1012,11 @@ function createGlowTexture(size) {
 const glowTex = createGlowTexture(128);
 
 function updateClusterAuras() {
+  // Hide all auras in semantic mode
+  if (semanticMode) {
+    Object.values(clusterAuras).forEach(a => { a.visible = false; });
+    return;
+  }
   Object.entries(clusterNodeMap).forEach(([cid, nids]) => {
     const pts = nids.map(nid => {
       const n = nodes.find(x => x.id === nid);
