@@ -314,13 +314,21 @@ const Graph = ForceGraph3D()(container)
     if (!link.__customMat) {
       const srcId = typeof link.source === 'object' ? link.source.id : link.source;
       const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-      const c1 = new THREE.Color(getColor(srcId));
-      const c2 = new THREE.Color(getColor(tgtId));
-      c1.lerp(c2, 0.5);
       const w = link.weight || 1;
-      const opacity = 0.04 + Math.min(w / 8, 1) * 0.15;
+      let lineColor, opacity;
+      if (embPositions) {
+        // UMAP mode: muted gray lines to avoid white blowout
+        lineColor = new THREE.Color(0x445566);
+        opacity = 0.03 + Math.min(w / 10, 1) * 0.1;
+      } else {
+        const c1 = new THREE.Color(getColor(srcId));
+        const c2 = new THREE.Color(getColor(tgtId));
+        c1.lerp(c2, 0.5);
+        lineColor = c1;
+        opacity = 0.04 + Math.min(w / 8, 1) * 0.15;
+      }
       link.__customMat = new THREE.LineBasicMaterial({
-        color: c1,
+        color: lineColor,
         transparent: true,
         opacity,
         depthWrite: false,
