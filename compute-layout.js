@@ -22,9 +22,9 @@ async function main() {
   console.log('🔄 UMAP 降维到 3D...');
   const umap = new UMAP({
     nComponents: 3,
-    nNeighbors: 15,
-    minDist: 0.3,
-    spread: 1.5,
+    nNeighbors: 8,
+    minDist: 0.8,
+    spread: 3.0,
     random: () => Math.random()
   });
   

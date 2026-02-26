@@ -164,9 +164,13 @@ function getColor(id) {
 // Build nodes & links for 3d-force-graph
 const nodes = Object.entries(graphData.nodes).map(([id, meta]) => {
   const pos = embPositions ? embPositions[id] : null;
-  return { id, ...meta, ...(pos || {}) };
+  // Set both x/y/z (initial) and fx/fy/fz (pinned) so engine initializes link geometry
+  if (pos) return { id, ...meta, x: pos.fx, y: pos.fy, z: pos.fz, fx: pos.fx, fy: pos.fy, fz: pos.fz };
+  return { id, ...meta };
 });
-const links = graphData.edges.map(e => ({ source: e.from, target: e.to, weight: e.w }));
+const allLinks = graphData.edges.map(e => ({ source: e.from, target: e.to, weight: e.w }));
+// In UMAP mode, filter weak edges to reduce visual noise
+const links = embPositions ? allLinks.filter(l => (l.weight || 1) >= 2.5) : allLinks;
 
 // Degree map
 const degree = {};
@@ -250,7 +254,7 @@ const Graph = ForceGraph3D()(container)
   .nodeThreeObject(node => {
     const color = getColor(node.id);
     const deg = degree[node.id] || 1;
-    const radius = 1.5 + Math.sqrt(deg / maxDeg) * 5;
+    const radius = embPositions ? (3 + Math.sqrt(deg / maxDeg) * 8) : (1.5 + Math.sqrt(deg / maxDeg) * 5);
 
     // Group to hold sphere + label + hitbox
     const group = new THREE.Group();
@@ -260,7 +264,7 @@ const Graph = ForceGraph3D()(container)
     const material = new THREE.MeshPhongMaterial({
       color: new THREE.Color(color),
       emissive: new THREE.Color(color),
-      emissiveIntensity: 0.3,
+      emissiveIntensity: 0.5,
       transparent: true,
       opacity: 0.85,
       shininess: 30
@@ -274,16 +278,17 @@ const Graph = ForceGraph3D()(container)
     const hitbox = new THREE.Mesh(hitGeo, hitMat);
     group.add(hitbox);
 
-    // Label sprite
+    // Label sprite — only show for high-degree nodes (top ~15%)
     const enAlias = (node.aliases || []).find(a => /^[a-zA-Z]/.test(a) && a !== node.id.replace(/-/g, ' '));
     const sprite = new SpriteText(enAlias || node.id);
     sprite.color = color;
-    sprite.textHeight = Math.max(3, Math.min(6, radius * 0.8));
-    sprite.position.y = -(radius + 2);
+    sprite.textHeight = embPositions ? Math.max(5, Math.min(10, radius * 0.9)) : Math.max(3, Math.min(6, radius * 0.8));
+    sprite.position.y = -(radius + 3);
     sprite.fontFace = '-apple-system, BlinkMacSystemFont, sans-serif';
     sprite.material.depthWrite = false;
     sprite.material.transparent = true;
-    sprite.material.opacity = 0.85;
+    const showLabel = embPositions ? (deg >= maxDeg * 0.12) : (deg >= maxDeg * 0.08);
+    sprite.material.opacity = showLabel ? 0.85 : 0;
     group.add(sprite);
 
     // Store refs for hover/click
@@ -313,26 +318,26 @@ const Graph = ForceGraph3D()(container)
       const c2 = new THREE.Color(getColor(tgtId));
       c1.lerp(c2, 0.5);
       const w = link.weight || 1;
-      const opacity = 0.03 + Math.min(w / 10, 1) * 0.25;
+      const opacity = 0.04 + Math.min(w / 8, 1) * 0.15;
       link.__customMat = new THREE.LineBasicMaterial({
         color: c1,
         transparent: true,
         opacity,
         depthWrite: false,
-        blending: THREE.AdditiveBlending
+        blending: THREE.NormalBlending
       });
     }
     return link.__customMat;
   })
   .linkWidth(link => {
     const w = link.weight || 1;
-    return 0.1 + Math.min(w / 10, 1) * 0.9;
+    return 0.15 + Math.min(w / 8, 1) * 0.6;
   })
   // Force layout tuning — UMAP mode: minimal forces, nodes pinned by fx/fy/fz
   .d3AlphaDecay(0.1)
-  .d3VelocityDecay(0.8)
-  .cooldownTicks(embPositions ? 0 : 200)
-  .warmupTicks(embPositions ? 0 : 50)
+  .d3VelocityDecay(0.95)
+  .cooldownTicks(embPositions ? 5 : 200)
+  .warmupTicks(embPositions ? 5 : 50)
   // Node hover
   .onNodeHover(node => {
     container.style.cursor = node ? 'pointer' : 'default';
@@ -388,9 +393,9 @@ setTimeout(() => {
 // Configure forces — in UMAP mode, disable all forces (nodes pinned by fx/fy/fz)
 if (embPositions) {
   Graph.d3Force('charge', null);
-  // Keep link force alive (needed for line rendering) but zero strength
+  // Keep link force with minimal strength so lines render
   const lf = Graph.d3Force('link');
-  if (lf) lf.strength(0);
+  if (lf) lf.strength(0.001).distance(1);
   Graph.d3Force('center', null);
   Graph.d3Force('cluster', null);
 } else {
@@ -951,6 +956,7 @@ function createGlowTexture(size) {
 const glowTex = createGlowTexture(128);
 
 function updateClusterAuras() {
+  if (embPositions) return; // Skip auras in UMAP mode
   Object.entries(clusterNodeMap).forEach(([cid, nids]) => {
     const pts = nids.map(nid => {
       const n = nodes.find(x => x.id === nid);
@@ -1003,7 +1009,12 @@ setTimeout(() => {
 
 // === INITIAL CAMERA ===
 // Start inside the graph, not far away
-Graph.cameraPosition({ x: 0, y: 150, z: 600 });
+// UMAP mode: pull camera back to see full layout; force mode: stay inside
+if (embPositions) {
+  Graph.cameraPosition({ x: 0, y: 0, z: 1200 });
+} else {
+  Graph.cameraPosition({ x: 0, y: 150, z: 600 });
+}
 // No zoomToFit — we stay inside the graph like a game
 
 // === LIGHTING + BLOOM (selective) ===
