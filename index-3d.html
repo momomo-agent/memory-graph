@@ -179,7 +179,7 @@ const maxDeg = Math.max(...Object.values(degree), 1);
 // Adjacency
 const adj = {};
 nodes.forEach(n => adj[n.id] = new Set());
-links.forEach(l => { adj[l.source].add(l.target); adj[l.target].add(l.source); });
+links.forEach(l => { if (adj[l.source] && adj[l.target]) { adj[l.source].add(l.target); adj[l.target].add(l.source); } });
 
 // Cluster node map
 const clusterNodeMap = {};
