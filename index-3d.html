@@ -20,21 +20,23 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 #search {
-  position: fixed; top: 16px; left: 16px; z-index: 10;
   background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 8px; padding: 8px 14px; color: #ccc; font-size: 13px;
-  width: 220px; outline: none; backdrop-filter: blur(8px);
+  border-radius: 6px; padding: 7px 12px; color: #ccc; font-size: 13px;
+  width: 180px; outline: none; backdrop-filter: blur(8px);
 }
 #search::placeholder { color: #888; }
 #search:focus { border-color: rgba(255,255,255,0.3); }
-#mode-switch {
-  position: fixed; top: 16px; left: 250px; z-index: 10;
+#mode-switch, #layout-toggle {
   background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 8px; padding: 8px 14px; color: rgba(255,255,255,0.6);
+  border-radius: 6px; padding: 7px 12px; color: rgba(255,255,255,0.6);
   font-size: 13px; cursor: pointer; backdrop-filter: blur(8px);
-  transition: all 0.2s ease; text-decoration: none; display: inline-block;
+  transition: all 0.2s ease; text-decoration: none; white-space: nowrap;
 }
-#mode-switch:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.95); }
+#mode-switch:hover, #layout-toggle:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.95); }
+#top-bar {
+  position: fixed; top: 12px; left: 12px; z-index: 100;
+  display: flex; gap: 8px; align-items: center;
+}
 #tooltip {
   position: fixed; pointer-events: none; z-index: 20;
   background: rgba(20,20,20,0.92); border: 1px solid rgba(255,255,255,0.15);
@@ -122,9 +124,11 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 </style>
 </head>
 <body>
+<div id="top-bar">
 <input id="search" type="text" placeholder="搜索节点..." autocomplete="off" spellcheck="false">
 <a id="mode-switch" href="index-2d.html">切换 2D</a>
-<a id="layout-toggle" style="position:fixed;top:12px;left:230px;z-index:100;background:rgba(30,30,30,0.85);color:#aaa;padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);user-select:none;text-decoration:none">语义布局</a>
+<a id="layout-toggle">语义布局</a>
+</div>
 <div id="tooltip"></div>
 <div id="legend"></div>
 <div id="stats"></div>
@@ -376,33 +380,40 @@ window._Graph = Graph; // expose for debugging
 
 // === SEMANTIC LAYOUT TOGGLE ===
 const layoutBtn = document.getElementById('layout-toggle');
-let _savedForcePositions = {}; // store force-layout positions before switching
+let _savedForcePositions = {};
 
 layoutBtn.addEventListener('click', () => {
   if (!embPositions) { layoutBtn.textContent = '无语义数据'; return; }
   semanticMode = !semanticMode;
   layoutBtn.textContent = semanticMode ? '力导向布局' : '语义布局';
   layoutBtn.style.color = semanticMode ? '#6cf' : '#aaa';
-  // Force link material rebuild
   Graph.graphData().links.forEach(l => { delete l.__customMat; });
   
   if (semanticMode) {
-    // Save current force positions, then animate to UMAP
     nodes.forEach(n => { _savedForcePositions[n.id] = { x: n.x, y: n.y, z: n.z }; });
-    // Disable forces
-    Graph.d3Force('charge', null);
-    Graph.d3Force('center', null);
+    // Zero out forces (don't delete them)
+    const cf = Graph.d3Force('charge'); if (cf) cf.strength(0);
     const lf = Graph.d3Force('link'); if (lf) lf.strength(0);
-    // Animate nodes to UMAP positions
+    const cef = Graph.d3Force('center'); if (cef && cef.strength) cef.strength(0);
     animateToPositions(embPositions, 1200, () => {
-      // Zoom camera to fit UMAP spread
       Graph.cameraPosition({ x: 0, y: 0, z: 1200 }, { x: 0, y: 0, z: 0 }, 800);
     });
   } else {
-    // Animate back to saved force positions, then re-enable forces
     animateToPositions(_savedForcePositions, 1200, () => {
-      // Unpin and reheat
       nodes.forEach(n => { delete n.fx; delete n.fy; delete n.fz; });
+      // Restore original force strengths
+      const cf = Graph.d3Force('charge');
+      if (cf) cf.strength(d => -30 - (degree[d.id] || 0) * 3).distanceMax(300);
+      const lf = Graph.d3Force('link');
+      if (lf) {
+        lf.distance(d => {
+          const sd = degree[typeof d.source === 'object' ? d.source.id : d.source] || 1;
+          const td = degree[typeof d.target === 'object' ? d.target.id : d.target] || 1;
+          return 30 + 60 / Math.sqrt(d.weight || 1) + ((sd > 10 || td > 10) ? 20 : 0);
+        }).strength(d => 0.15 * Math.sqrt(d.weight || 1));
+      }
+      const cef = Graph.d3Force('center');
+      if (cef && cef.strength) cef.strength(0.05);
       Graph.d3ReheatSimulation();
     });
   }
