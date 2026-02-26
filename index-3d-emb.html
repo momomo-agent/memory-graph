@@ -748,11 +748,17 @@ function animatePulses(now) {
         if (ft < 1) {
           requestAnimationFrame(crossfade);
         } else {
-          Graph.scene().remove(p.currentLine);
-          p.currentLine.geometry.dispose();
-          p.currentLine.material.dispose();
-          // Ensure final state
-          if (underlyingObj) underlyingObj.material.opacity = 1.0;
+          if (underlyingObj) {
+            // Underlying exists — remove overlay, keep underlying lit
+            Graph.scene().remove(p.currentLine);
+            p.currentLine.geometry.dispose();
+            p.currentLine.material.dispose();
+            underlyingObj.material.opacity = 1.0;
+          } else {
+            // No underlying line (UMAP mode) — keep overlay as persistent glow
+            p.currentLine.material.opacity = 0.6;
+            markBloom(p.currentLine, true);
+          }
         }
       };
       requestAnimationFrame(crossfade);
