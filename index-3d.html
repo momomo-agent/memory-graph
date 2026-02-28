@@ -138,10 +138,10 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="changelog"></div>
 
 <script src="graph-data.js"></script>
-<script src="graph-data-emb.js"></script>
 <script>
 // === DATA ===
-// embPositions loaded from graph-data-emb.js (UMAP 3D coordinates)
+// embPositions: loaded from graph-data.js if available (UMAP 3D coordinates)
+if (typeof embPositions === 'undefined') var embPositions = {};
 let semanticMode = false;
 // graphData loaded from graph-data.js
 // Dynamic cluster colors — HSL color wheel, evenly spaced
