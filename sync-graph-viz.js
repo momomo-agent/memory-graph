@@ -30,8 +30,28 @@ for (const entry of changelog) {
   }
 }
 
-fs.writeFileSync(OUT, 'const graphData = ' + JSON.stringify(graph) + ';\nconst graphChangelog = ' + JSON.stringify(changelog) + ';\nconst todayActive = ' + JSON.stringify({ nodes: [...activeNodes], edges: [...activeEdges] }) + ';\n');
+// Load UMAP positions if available
+let embPositions = {};
+const UMAP_PATH = path.join(__dirname, 'graph-data-emb.json');
+try {
+  if (fs.existsSync(UMAP_PATH)) {
+    embPositions = JSON.parse(fs.readFileSync(UMAP_PATH, 'utf8'));
+  }
+} catch(e) {}
+
+fs.writeFileSync(OUT, 'const graphData = ' + JSON.stringify(graph) + ';\nconst graphChangelog = ' + JSON.stringify(changelog) + ';\nconst todayActive = ' + JSON.stringify({ nodes: [...activeNodes], edges: [...activeEdges] }) + ';\nconst embPositions = ' + JSON.stringify(embPositions) + ';\n');
 console.log(`✅ Synced graph-data.js: ${Object.keys(graph.nodes).length} nodes, ${graph.edges.length} edges, ${changelog.length} changelog entries`);
+
+// Auto cache-bust: update graph-data.js version in HTML files
+const ts = Math.floor(Date.now() / 1000);
+for (const htmlFile of ['index-3d.html', 'index.html']) {
+  const hp = path.join(__dirname, htmlFile);
+  if (fs.existsSync(hp)) {
+    let html = fs.readFileSync(hp, 'utf8');
+    html = html.replace(/graph-data\.js\?v=\d+/, `graph-data.js?v=${ts}`);
+    fs.writeFileSync(hp, html);
+  }
+}
 
 // Auto git push (best-effort, non-blocking)
 const { execSync } = require('child_process');
