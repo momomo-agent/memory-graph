@@ -155,7 +155,7 @@ clusterIds.forEach((id, i) => {
 // === DERIVED DATA ===
 const clusterLabels = {};
 const nodeCluster = {};
-graphData.clusters.forEach(c => {
+(graphData.clusters || []).forEach(c => {
   clusterLabels[c.id] = c.label;
   c.nodes.forEach(nid => { if (!nodeCluster[nid]) nodeCluster[nid] = c.id; });
 });
@@ -181,7 +181,7 @@ links.forEach(l => { if (adj[l.source] && adj[l.target]) { adj[l.source].add(l.t
 
 // Cluster node map
 const clusterNodeMap = {};
-graphData.clusters.forEach(c => { clusterNodeMap[c.id] = c.nodes; });
+(graphData.clusters || []).forEach(c => { clusterNodeMap[c.id] = c.nodes; });
 
 // === SPREAD ACTIVATION DATA ===
 const spreadAdj = {};
