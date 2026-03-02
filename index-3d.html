@@ -137,7 +137,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="graph-container"></div>
 <div id="changelog"></div>
 
-<script src="graph-data.js?v=1772280080"></script>
+<script src="graph-data.js?v=1772424061"></script>
 <script>
 // === DATA ===
 let semanticMode = false;
@@ -379,6 +379,8 @@ window._Graph = Graph; // expose for debugging
 // === SEMANTIC LAYOUT TOGGLE ===
 const layoutBtn = document.getElementById('layout-toggle');
 let _savedForcePositions = {};
+let _savedCameraPos = null;
+let _savedCameraTarget = null;
 
 layoutBtn.addEventListener('click', () => {
   if (!embPositions) { layoutBtn.textContent = '无语义数据'; return; }
@@ -389,6 +391,11 @@ layoutBtn.addEventListener('click', () => {
   
   if (semanticMode) {
     nodes.forEach(n => { _savedForcePositions[n.id] = { x: n.x, y: n.y, z: n.z }; });
+    // Save camera state before switching
+    const cam = Graph.camera();
+    const controls = Graph.controls();
+    _savedCameraPos = { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+    _savedCameraTarget = controls ? { x: controls.target.x, y: controls.target.y, z: controls.target.z } : { x: 0, y: 0, z: 0 };
     // Zero out forces (don't delete them)
     const cf = Graph.d3Force('charge'); if (cf) cf.strength(0);
     const lf = Graph.d3Force('link'); if (lf) lf.strength(0);
@@ -397,6 +404,11 @@ layoutBtn.addEventListener('click', () => {
       Graph.cameraPosition({ x: 0, y: 0, z: 1200 }, { x: 0, y: 0, z: 0 }, 800);
     });
   } else {
+    // Restore camera position before animating nodes back
+    if (_savedCameraPos) {
+      const target = _savedCameraTarget || { x: 0, y: 0, z: 0 };
+      Graph.cameraPosition(_savedCameraPos, target, 800);
+    }
     animateToPositions(_savedForcePositions, 1200, () => {
       nodes.forEach(n => { delete n.fx; delete n.fy; delete n.fz; });
       // Restore original force strengths
