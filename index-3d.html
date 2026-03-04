@@ -137,7 +137,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="graph-container"></div>
 <div id="changelog"></div>
 
-<script src="graph-data.js?v=1772426911"></script>
+<script src="graph-data.js?v=1772633721"></script>
 <script>
 // === DATA ===
 let semanticMode = false;
@@ -239,26 +239,26 @@ const container = document.getElementById('graph-container');
 let hoveredNode = null;
 let clickedNode = null;
 
+// Today's active set
+const _activeNodes3d = new Set((typeof todayActive !== 'undefined' ? todayActive.nodes : []));
+const _activeEdges3d = new Set((typeof todayActive !== 'undefined' ? todayActive.edges : []));
+// Pre-compute shared geometries (bucketed by radius to reduce draw calls)
+const _sharedGeoCache = {};
+function getSharedGeo(radius) {
+  // Bucket to nearest 0.5 to share geometries across similar-sized nodes
+  const key = (Math.round(radius * 2) / 2).toFixed(1);
+  if (!_sharedGeoCache[key]) {
+    _sharedGeoCache[key] = new THREE.SphereGeometry(parseFloat(key), 12, 8);
+  }
+  return _sharedGeoCache[key];
+}
+// Pre-collect active node ids for fast iteration in animate loop
+const _activeNodesList = [];
+const _activeLinksList = [];
+
 const Graph = ForceGraph3D()(container)
   .backgroundColor('#0a0a0f')
   .graphData({ nodes, links })
-  // Today's active set
-  ;const _activeNodes3d = new Set((typeof todayActive !== 'undefined' ? todayActive.nodes : []));
-  const _activeEdges3d = new Set((typeof todayActive !== 'undefined' ? todayActive.edges : []));
-  // Pre-compute shared geometries (bucketed by radius to reduce draw calls)
-  ;const _sharedGeoCache = {};
-  function getSharedGeo(radius) {
-    // Bucket to nearest 0.5 to share geometries across similar-sized nodes
-    const key = (Math.round(radius * 2) / 2).toFixed(1);
-    if (!_sharedGeoCache[key]) {
-      _sharedGeoCache[key] = new THREE.SphereGeometry(parseFloat(key), 12, 8);
-    }
-    return _sharedGeoCache[key];
-  }
-  // Pre-collect active node ids for fast iteration in animate loop
-  const _activeNodesList = [];
-  const _activeLinksList = [];
-  Graph
   // Node appearance
   .nodeThreeObject(node => {
     const color = getColor(node.id);
