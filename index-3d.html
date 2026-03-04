@@ -137,7 +137,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="graph-container"></div>
 <div id="changelog"></div>
 
-<script src="graph-data.js?v=1772633721"></script>
+<script src="graph-data.js?v=1772636099"></script>
 <script>
 // === DATA ===
 let semanticMode = false;
@@ -186,6 +186,8 @@ const clusterNodeMap = {};
 // === SPREAD ACTIVATION DATA ===
 const spreadAdj = {};
 graphData.edges.forEach(e => {
+  // Skip edges referencing non-existent nodes
+  if (!(e.from in graphData.nodes) || !(e.to in graphData.nodes)) return;
   const ew = e.w * (e.imp || 1);
   if (!spreadAdj[e.from]) spreadAdj[e.from] = [];
   if (!spreadAdj[e.to]) spreadAdj[e.to] = [];
