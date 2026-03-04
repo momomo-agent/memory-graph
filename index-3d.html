@@ -137,7 +137,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="graph-container"></div>
 <div id="changelog"></div>
 
-<script src="graph-data.js?v=1772636099"></script>
+<script src="graph-data.js?v=1772636667"></script>
 <script>
 // === DATA ===
 let semanticMode = false;
@@ -349,6 +349,8 @@ const Graph = ForceGraph3D()(container)
   // Force layout tuning
   .d3AlphaDecay(0.02)
   .d3VelocityDecay(0.3)
+  .warmupTicks(200)
+  .cooldownTicks(0)
   // Node hover
   .onNodeHover(node => {
     container.style.cursor = node ? 'pointer' : 'default';
