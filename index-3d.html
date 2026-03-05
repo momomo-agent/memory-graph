@@ -137,7 +137,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="graph-container"></div>
 <div id="changelog"></div>
 
-<script src="graph-data.js?v=1772636779"></script>
+<script src="graph-data.js?v=1772676663"></script>
 <script>
 // === DATA ===
 let semanticMode = false;
@@ -349,8 +349,7 @@ const Graph = ForceGraph3D()(container)
   // Force layout tuning
   .d3AlphaDecay(0.02)
   .d3VelocityDecay(0.3)
-  .warmupTicks(500)
-  .cooldownTicks(0)
+  .warmupTicks(100)
   // Node hover
   .onNodeHover(node => {
     container.style.cursor = node ? 'pointer' : 'default';
@@ -486,7 +485,7 @@ setTimeout(() => {
 // Customize charge force
 const chargeForce = Graph.d3Force('charge');
 if (chargeForce) {
-  chargeForce.strength(d => -50 - (degree[d.id] || 0) * 5).distanceMax(400);
+  chargeForce.strength(d => -30 - (degree[d.id] || 0) * 3).distanceMax(300);
 }
 // Customize link force
 const linkForce = Graph.d3Force('link');
@@ -1110,8 +1109,10 @@ setTimeout(() => {
 
 // === INITIAL CAMERA ===
 // Start inside the graph, not far away
-Graph.cameraPosition({ x: 0, y: 150, z: 600 });
-// No zoomToFit — we stay inside the graph like a game
+// After warmup, zoom to fit all nodes
+setTimeout(() => {
+  Graph.zoomToFit(800, 50);
+}, 500);
 
 // === LIGHTING + BLOOM (selective) ===
 const BLOOM_LAYER = 1;
