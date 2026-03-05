@@ -137,7 +137,7 @@ body { background: #0a0a0f; overflow: hidden; font-family: -apple-system, BlinkM
 <div id="graph-container"></div>
 <div id="changelog"></div>
 
-<script src="graph-data.js?v=1772676663"></script>
+<script src="graph-data.js?v=1772677417"></script>
 <script>
 // === DATA ===
 let semanticMode = false;
@@ -349,7 +349,6 @@ const Graph = ForceGraph3D()(container)
   // Force layout tuning
   .d3AlphaDecay(0.02)
   .d3VelocityDecay(0.3)
-  .warmupTicks(100)
   // Node hover
   .onNodeHover(node => {
     container.style.cursor = node ? 'pointer' : 'default';
@@ -1109,10 +1108,8 @@ setTimeout(() => {
 
 // === INITIAL CAMERA ===
 // Start inside the graph, not far away
-// After warmup, zoom to fit all nodes
-setTimeout(() => {
-  Graph.zoomToFit(800, 50);
-}, 500);
+Graph.cameraPosition({ x: 0, y: 150, z: 600 });
+// No zoomToFit — we stay inside the graph like a game
 
 // === LIGHTING + BLOOM (selective) ===
 const BLOOM_LAYER = 1;
