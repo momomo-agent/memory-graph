@@ -11,6 +11,14 @@ const OUT = path.join(__dirname, 'graph-data.js');
 
 const graph = JSON.parse(fs.readFileSync(GRAPH, 'utf8'));
 
+// Filter orphan edges (edges referencing non-existent nodes)
+const nodeIds = new Set(Object.keys(graph.nodes));
+const beforeEdges = graph.edges.length;
+graph.edges = graph.edges.filter(e => nodeIds.has(e.from) && nodeIds.has(e.to));
+if (graph.edges.length < beforeEdges) {
+  console.log(`⚠️ Filtered ${beforeEdges - graph.edges.length} orphan edges`);
+}
+
 // Sync changelog (last 50 entries)
 let changelog = [];
 if (fs.existsSync(CHANGELOG)) {
