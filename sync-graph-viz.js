@@ -6,24 +6,29 @@ const fs = require('fs');
 const path = require('path');
 
 const GRAPH = path.join('/Users/kenefe/clawd/memory/graph.json');
-const CHANGELOG = path.join('/Users/kenefe/clawd/memory/graph-changelog.jsonl');
+const CHANGELOG_DIR = path.join('/Users/kenefe/clawd/memory/changelog');
 const OUT = path.join(__dirname, 'graph-data.js');
 
 const graph = JSON.parse(fs.readFileSync(GRAPH, 'utf8'));
 
 // Filter orphan edges (edges referencing non-existent nodes)
 const nodeIds = new Set(Object.keys(graph.nodes));
-const beforeEdges = graph.edges.length;
-graph.edges = graph.edges.filter(e => nodeIds.has(e.from) && nodeIds.has(e.to));
+const edgeArray = Array.isArray(graph.edges) ? graph.edges : Object.values(graph.edges);
+const beforeEdges = edgeArray.length;
+graph.edges = edgeArray.filter(e => nodeIds.has(e.from) && nodeIds.has(e.to));
 if (graph.edges.length < beforeEdges) {
   console.log(`⚠️ Filtered ${beforeEdges - graph.edges.length} orphan edges`);
 }
 
-// Sync changelog (last 50 entries)
+// Sync changelog (last 50 entries from recent files)
 let changelog = [];
-if (fs.existsSync(CHANGELOG)) {
-  const lines = fs.readFileSync(CHANGELOG, 'utf8').trim().split('\n').filter(Boolean);
-  changelog = lines.slice(-50).map(l => { try { return JSON.parse(l); } catch(e) { return null; } }).filter(Boolean);
+if (fs.existsSync(CHANGELOG_DIR)) {
+  const files = fs.readdirSync(CHANGELOG_DIR).filter(f => f.endsWith('.jsonl')).sort().slice(-3);
+  for (const f of files) {
+    const lines = fs.readFileSync(path.join(CHANGELOG_DIR, f), 'utf8').trim().split('\n').filter(Boolean);
+    changelog.push(...lines.map(l => { try { return JSON.parse(l); } catch(e) { return null; } }).filter(Boolean));
+  }
+  changelog = changelog.slice(-50);
 }
 
 // Extract today's activated nodes/edges from changelog
